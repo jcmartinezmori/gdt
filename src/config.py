@@ -8,11 +8,13 @@ CUSTOM_FILTER = (
     ']'
 )
 STOPS_TAGS = {
-    'highway': 'bus_stop'
+    'public_transport': 'platform'
 }
 
 H = [5, 10, 15, 30, 60]
-WALKING_DST = 1000
+WALKING_DST = 500
+COVER_DST = 2 * WALKING_DST
+FORBIDDEN_DST = 4 * WALKING_DST
 JAC_DST = 0.75
 BDGT_FACTOR = 1
 QS_FACTOR = 0.5

@@ -11,7 +11,7 @@ def graph():
     G = ox.graph_from_place(
         PLACE,
         network_type='drive',
-        simplify=True,
+        simplify=False,
         retain_all=False,
         custom_filter=CUSTOM_FILTER
     )
@@ -24,21 +24,6 @@ def graph():
     return G, U
 
 
-def st_pairs(U):
-
-    W = src.solver.walkable_cover(U)
-
-    forbidden = dict()
-    for s in U.nodes():
-        forbidden[s] = set(nx.single_source_dijkstra_path_length(U, s, cutoff=3 * WALKING_DST, weight='length').keys())
-    st_pairs = []
-    for s, t in it.combinations(W, 2):
-        if t not in forbidden[s] and s not in forbidden[t]:
-            st_pairs.append(tuple(sorted((s, t))))
-
-    return st_pairs
-
-
 def stops(U):
 
     stops_df = ox.features_from_place(PLACE, STOPS_TAGS).droplevel('element')
@@ -46,12 +31,34 @@ def stops(U):
     stops_df['node'] = stops_df.apply(lambda stop: ox.nearest_nodes(U, stop.geometry.x, stop.geometry.y), axis=1)
 
     stops_ref_to_node = stops_df['node'].to_dict()
-    stops = set(stops_dict.values())
+    stops = set(stops_ref_to_node.values())
 
     return stops, stops_ref_to_node
 
 
-def current_service_plan(st_pairs, stops_ref_to_node):
+def st_pairs(U, **kwargs):
+
+    if 'stops' in kwargs:
+        stops = kwargs['stops']
+    else:
+        stops = None
+
+    W = src.solver.cover(U, stops=stops)
+
+    forbidden = dict()
+    for s in W:
+        forbidden[s] = set(
+            nx.single_source_dijkstra_path_length(U, s, cutoff=FORBIDDEN_DST, weight='length').keys()
+        ).intersection(W)
+    st_pairs = []
+    for s, t in it.combinations(W, 2):
+        if t not in forbidden[s] and s not in forbidden[t]:
+            st_pairs.append(tuple(sorted((s, t))))
+
+    return W, st_pairs
+
+
+def candidate_lines(G, U, st_pairs, stops_ref_to_node):
 
     current_query = """
     [out:json];
@@ -61,9 +68,10 @@ def current_service_plan(st_pairs, stops_ref_to_node):
     );
     out body;
     """.format(PLACE, ADMIN_LEVEL)
-    current_response = requests.get('http://overpass-api.de/api/interpreter', params={'data': lines_query}).json()
+    current_response = requests.get('http://overpass-api.de/api/interpreter', params={'data': current_query}).json()
 
-    C, C_st = dict(), {(s, t): set() for s, t in st_pairs}
+    L, L_st = dict(), {(s, t): set() for s, t in st_pairs}
+    idx = 0
     for element in current_response['elements']:
         ell_stop_seq = []
         for member in element['members']:
@@ -72,29 +80,53 @@ def current_service_plan(st_pairs, stops_ref_to_node):
                     stop = stops_ref_to_node[member['ref']]
                     if not ell_stop_seq or ell_stop_seq[-1] != ell_stop_seq:
                         ell_stop_seq.append(stop)
-        seen = set()
-        stops = tuple(stop for stop in stops if not (stop in seen or seen.add(stop)))
-        if len(stops) >= 6:
-            length = 0
-            route = []
-            for s, t in zip(stops[:-1], stops[1:]):
-                if s != t:
-                    segment_length, segment_route = nx.bidirectional_dijkstra(g, s, t, weight='length')
-                    length += segment_length
-                    route.extend(segment_route[:-1])
-            route.append(stops[-1])
-            route = tuple(route)
-            coords = tuple((g.nodes[node]['y'], g.nodes[node]['x']) for node in route)
-            hexcolor = HEXCOLORS[len(lines) % len(HEXCOLORS)]
-            line = [element['id'], element['tags'], stops, length, route, coords, hexcolor]
-            lines.append(line)
-    lines_df = pd.DataFrame(lines, columns=['id', 'tags', 'stops', 'length', 'route', 'coords', 'hexcolor'])
-    lines_df['length'] /= 1000  # kilometers
-    lines_df['dist'] = lines_df.apply(
-        lambda line: nx.multi_source_dijkstra_path_length(g, line.stops, weight='length', cutoff=WALKING_DST),
-        axis=1
-    )
-    lines_df.set_index('id', inplace=True)
-    lines_df.drop_duplicates(subset=['length'], inplace=True)
+        if len(ell_stop_seq) >= 2:
+            ell = element['tags']['name']
+            if ell_stop_seq[0] != ell_stop_seq[-1]:
+                ell_stop_seq += ell_stop_seq[-2::-1]
+            ell_length = 0
+            ell_path = []
+            for stop1, stop2 in zip(ell_stop_seq[:-1], ell_stop_seq[1:]):
+                seg_length, seg_path = nx.single_source_dijkstra(G, stop1, stop2, weight='length')
+                ell_length += seg_length
+                ell_path.extend(seg_path[:-1])
+            ell_path.append(ell_stop_seq[-1])
+            ell_stops = set(ell_stop_seq)
+            ell_coverage = set(
+                nx.multi_source_dijkstra_path_length(U, ell_stops, weight='length', cutoff=WALKING_DST).keys()
+            )
+            ell_transfer_stops = ell_stops.intersection(ell_coverage)
 
-    return C, C_st
+            L[ell] = {
+                'idx': idx,
+                'length': ell_length,
+                'path': ell_path,
+                'stops': ell_stops,
+                'stop_seq': ell_stop_seq,
+                'coverage': ell_coverage,
+                'transfer_stops': ell_transfer_stops
+            }
+            idx += 1
+
+            for s, t in st_pairs:
+                if s in ell_coverage and t in ell_coverage:
+                    L_st[(s, t)].add(ell)
+
+    C = tuple((ell, max(H)) for ell in L.keys())
+
+    return L, L_st, C
+
+
+def transfer_candidates(L):
+
+    T = dict()
+
+    for ell1, ell2 in it.combinations(L.keys(), 2):
+        if not L[ell1]['transfer_stops'].isdisjoint(L[ell2]['transfer_stops']):
+            coverage1 = L[ell1]['coverage']
+            coverage2 = L[ell2]['coverage']
+            jac = len(coverage1.symmetric_difference(coverage2)) / len(coverage1.union(coverage2))
+            if jac >= JAC_DST:
+                T[tuple(sorted((ell1, ell2)))] = jac
+
+    return T

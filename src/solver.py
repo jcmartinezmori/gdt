@@ -4,30 +4,38 @@ import time
 from src.config import *
 
 
-def walkable_cover(U):
+def cover(U, stops=None):
 
     coverage = {
-        u: set(nx.single_source_dijkstra_path_length(U, u, cutoff=WALKING_DST, weight='length').keys())
-        for u in U.nodes()
+        s: set(nx.single_source_dijkstra_path_length(U, s, cutoff=COVER_DST, weight='length').keys())
+        for s in U.nodes()
     }
 
     m = gp.Model()
     m._x = m.addVars(U.nodes(), vtype=gp.GRB.BINARY, name='x')
 
-    for u in U.nodes():
-        m.addConstr(gp.quicksum(m._x[v] for v in coverage[u]) >= 1)
+    for s in U.nodes():
+        m.addConstr(gp.quicksum(m._x[t] for t in coverage[s]) >= 1)
+    if stops is not None:
+        for stop in stops:
+            m.addConstr(m._x[stop] == 1)
 
     obj = gp.quicksum(m._x.values())
 
     m.setObjective(obj)
     m.optimize()
 
-    cover = {u for u, var in m._x.items() if var.X > 0}
+    cover = {s for s, var in m._x.items() if var.X > 0}
 
     return cover
 
 
-def service_plans(G, st_pairs, L, L_st, T, C):
+def service_plans(st_pairs, L, L_st, C, T, **kwargs):
+
+    if 'rho' not in kwargs:
+        rho = {(s, t): 1 for s, t in st_pairs}
+    else:
+        rho = kwargs['rho']
 
     t0 = time.time()
 
@@ -57,9 +65,8 @@ def service_plans(G, st_pairs, L, L_st, T, C):
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
     print('         Started writing budget constraint ...')
-    C_cost = sum(L[ell]['length'] * 1 / h for ell, h in C)
     lhs = gp.quicksum(L[ell]['length'] / h * var for (ell, h), var in m._x.items())
-    rhs = C_cost * BDGT_FACTOR
+    rhs = sum(L[ell]['length'] * 1 / h for ell, h in C) * BDGT_FACTOR
     m.addConstr(lhs <= rhs)
     t1 = time.time()
     print('             ... done writing budget constraint!')
@@ -111,7 +118,7 @@ def service_plans(G, st_pairs, L, L_st, T, C):
     t1 = time.time()
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    u_obj = gp.quicksum(max(G.nodes[s]['rho'], G.nodes[t]['rho']) * var for (s, t), var in m._u.items())
+    u_obj = gp.quicksum(rho[(s, t)] * var for (s, t), var in m._u.items())
     y_obj = gp.quicksum(m._y.values())
     z_obj = gp.quicksum(T[(ell1, ell2)] * var for (ell1, ell2), var in m._z.items())
 
