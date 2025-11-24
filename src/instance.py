@@ -68,7 +68,7 @@ def cover_and_st_pairs(U, **kwargs):
     return W, st_pairs
 
 
-def candidate_lines(G, U, W, st_pairs, stops_ref_to_node, no_random=100):
+def candidate_lines(G, U, W, st_pairs, stops_ref_to_node, no_random=250):
 
     L, L_st = dict(), {(s, t): set() for s, t in st_pairs}
     C = set()
