@@ -24,9 +24,9 @@ def cover(U, stops=None):
     m.setObjective(obj)
     m.optimize()
 
-    cover = {s for s, var in m._x.items() if var.X > 0}
+    W = {s for s, var in m._x.items() if var.X > 0}
 
-    return cover
+    return W
 
 
 def service_plans(st_pairs, L, L_st, C, T, **kwargs):

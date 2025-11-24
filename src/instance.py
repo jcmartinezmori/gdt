@@ -1,6 +1,7 @@
 import osmnx as ox
 import itertools as it
 import networkx as nx
+import numpy as np
 import requests
 import src.solver
 from src.config import *
@@ -67,7 +68,11 @@ def cover_and_st_pairs(U, **kwargs):
     return W, st_pairs
 
 
-def candidate_lines(G, U, st_pairs, stops_ref_to_node):
+def candidate_lines(G, U, W, st_pairs, stops_ref_to_node, no_random=100):
+
+    L, L_st = dict(), {(s, t): set() for s, t in st_pairs}
+    C = set()
+    idx = 0
 
     current_query = """
     [out:json];
@@ -79,8 +84,6 @@ def candidate_lines(G, U, st_pairs, stops_ref_to_node):
     """.format(PLACE, ADMIN_LEVEL)
     current_response = requests.get('http://overpass-api.de/api/interpreter', params={'data': current_query}).json()
 
-    L, L_st = dict(), {(s, t): set() for s, t in st_pairs}
-    idx = 0
     for element in current_response['elements']:
         ell_stop_seq = []
         for member in element['members']:
@@ -100,10 +103,10 @@ def candidate_lines(G, U, st_pairs, stops_ref_to_node):
                 ell_length += seg_length
                 ell_path.extend(seg_path[:-1])
             ell_path.append(ell_stop_seq[-1])
-            ell_stops = set(ell_stop_seq)
+            ell_stops = set(ell_stop_seq).intersection(W)
             ell_coverage = set(
                 nx.multi_source_dijkstra_path_length(U, ell_stops, weight='length', cutoff=WALKING_DST).keys()
-            )
+            ).intersection(W)
             ell_transfer_stops = ell_stops.intersection(ell_coverage)
 
             L[ell] = {
@@ -111,7 +114,6 @@ def candidate_lines(G, U, st_pairs, stops_ref_to_node):
                 'length': ell_length,
                 'path': ell_path,
                 'stops': ell_stops,
-                'stop_seq': ell_stop_seq,
                 'coverage': ell_coverage,
                 'transfer_stops': ell_transfer_stops
             }
@@ -121,7 +123,40 @@ def candidate_lines(G, U, st_pairs, stops_ref_to_node):
                 if s in ell_coverage and t in ell_coverage:
                     L_st[(s, t)].add(ell)
 
-    C = tuple((ell, max(H)) for ell in L.keys())
+            C.add((ell, max(H)))
+
+    for i in range(no_random):
+
+        ell = 'r-{0}'.format(i)
+        p, q = np.random.choice(list(W), size=2, replace=False)
+
+        p_q_length, p_q_path = nx.single_source_dijkstra(G, source=p, target=q, weight='length')
+        q_p_length, q_p_path = nx.single_source_dijkstra(G, source=q, target=p, weight='length')
+
+        p_q_stops = set(p_q_path).intersection(W)
+        p_q_coverage = set(
+            nx.multi_source_dijkstra_path_length(U, p_q_stops, weight='length', cutoff=WALKING_DST).keys()
+        ).intersection(W)
+        q_p_stops = set(q_p_path).intersection(W)
+        q_p_coverage = set(
+            nx.multi_source_dijkstra_path_length(U, q_p_stops, weight='length', cutoff=WALKING_DST).keys()
+        ).intersection(W)
+
+        ell_length = p_q_length + q_p_length
+        ell_path = p_q_path + q_p_path[1:]
+        ell_stops = p_q_stops.union(q_p_stops)
+        ell_coverage = p_q_coverage.intersection(q_p_coverage)
+        ell_transfer_stops = ell_stops.intersection(ell_coverage)
+
+        L[ell] = {
+            'idx': idx,
+            'length': ell_length,
+            'path': ell_path,
+            'stops': ell_stops,
+            'coverage': ell_coverage,
+            'transfer_stops': ell_transfer_stops
+        }
+        idx += 1
 
     return L, L_st, C
 
