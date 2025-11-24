@@ -6,16 +6,15 @@ from src.config import *
 
 def cover(U, stops=None):
 
-    coverage = {
-        s: set(nx.single_source_dijkstra_path_length(U, s, cutoff=COVER_DST, weight='length').keys())
-        for s in U.nodes()
-    }
-
     m = gp.Model()
     m._x = m.addVars(U.nodes(), vtype=gp.GRB.BINARY, name='x')
 
     for s in U.nodes():
-        m.addConstr(gp.quicksum(m._x[t] for t in coverage[s]) >= 1)
+        if stops is not None:
+            lengths = nx.single_source_dijkstra_path_length(U, s, weight='length', cutoff=COVER_DST_FACTOR * COVER_DST)
+            if set(lengths.keys()).isdisjoint(stops):
+                continue
+        m.addConstr(gp.quicksum(m._x[t] for t in U.nodes[s]['coverage']) >= 1)
     if stops is not None:
         for stop in stops:
             m.addConstr(m._x[stop] == 1)

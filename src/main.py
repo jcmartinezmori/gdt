@@ -19,7 +19,7 @@ np.random.seed(42)
 
 G, U = src.instance.graph()
 stops, stops_ref_to_node = src.instance.stops(U)
-W, st_pairs = src.instance.st_pairs(U, stops=stops)
+W, st_pairs = src.instance.cover_and_st_pairs(U, stops=stops)
 L, L_st, C = src.instance.candidate_lines(G, U, st_pairs, stops_ref_to_node)
 T = src.instance.transfer_candidates(L)
 rho = {(s, t): max(G.nodes[s]['rho'], G.nodes[t]['rho']) for s, t in st_pairs}

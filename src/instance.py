@@ -16,10 +16,17 @@ def graph():
         custom_filter=CUSTOM_FILTER
     )
     G = nx.subgraph(G, max(nx.strongly_connected_components(G), key=len))
-    for u, rho in nx.pagerank(G).items():
-        G.nodes[u]['rho'] = rho
-
     U = G.to_undirected()
+
+    for s in U.nodes():
+
+        U.nodes[s]['coverage'] = set(
+            nx.single_source_dijkstra_path_length(U, s, cutoff=COVER_DST, weight='length').keys()
+        )
+        G.nodes[s]['coverage'] = U.nodes[s]['coverage']
+
+        U.nodes[s]['rho'] = len(U.nodes[s]['coverage'])
+        G.nodes[s]['rho'] = U.nodes[s]['rho']
 
     return G, U
 
@@ -36,7 +43,7 @@ def stops(U):
     return stops, stops_ref_to_node
 
 
-def st_pairs(U, **kwargs):
+def cover_and_st_pairs(U, **kwargs):
 
     if 'stops' in kwargs:
         stops = kwargs['stops']
@@ -48,7 +55,9 @@ def st_pairs(U, **kwargs):
     forbidden = dict()
     for s in W:
         forbidden[s] = set(
-            nx.single_source_dijkstra_path_length(U, s, cutoff=FORBIDDEN_DST, weight='length').keys()
+            nx.single_source_dijkstra_path_length(
+                U, s, cutoff=FORBIDDEN_DST_FACTOR * WALKING_DST, weight='length'
+            ).keys()
         ).intersection(W)
     st_pairs = []
     for s, t in it.combinations(W, 2):
