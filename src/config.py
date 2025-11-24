@@ -1,4 +1,5 @@
 PLACE = 'Tompkins County'
+ADMIN_LEVEL = 6
 CENTER = (42.4396096, -76.4968760)
 CUSTOM_FILTER = (
     '['
@@ -6,14 +7,16 @@ CUSTOM_FILTER = (
     '"motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|residential"'
     ']'
 )
+STOPS_TAGS = {
+    'highway': 'bus_stop'
+}
 
 H = [5, 10, 15, 30, 60]
-WALKING_DST = 500
+WALKING_DST = 1000
 JAC_DST = 0.75
-DTR_FACTOR = 1.5
 BDGT_FACTOR = 1
 QS_FACTOR = 0.5
-REL_TOL = 0.25
+REL_TOL = 0.1
 
 OPACITY = 1/6
 ZOOM = 11

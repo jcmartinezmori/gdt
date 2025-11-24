@@ -11,10 +11,12 @@ import shutil
 import time
 from playwright.async_api import async_playwright
 from pathlib import Path
+
+import src.solver
+from src.solver import *
 from src.config import *
 np.random.seed(42)
 
-t0 = time.time()
 G = ox.graph_from_place(
     PLACE,
     network_type='drive',
@@ -32,8 +34,8 @@ G = ox.graph_from_place(
 # )
 G = nx.subgraph(G, max(nx.strongly_connected_components(G), key=len))
 U = G.to_undirected()
-D = nx.dominating_set(U)
-pr = nx.pagerank(U)
+D = src.solver.walkable_cover(U)
+RHO = nx.pagerank(U)
 
 forbidden = dict()
 for s in G.nodes():
@@ -83,8 +85,6 @@ for ell in range(L_size):
     if ell <= C_size:
         C.add((ell, h))
 
-C_cost = sum(L[ell]['length'] * 1 / h for ell, h in C)
-
 T = dict()
 
 for ell1, ell2 in it.combinations(L.keys(), 2):
@@ -101,104 +101,9 @@ print('         - number of nodes: {0}'.format(G.number_of_nodes()))
 print('         - number of s-t pairs: {0}'.format(len(st_pairs)))
 print('         - headway options: {0}'.format(H))
 print('         - number of candidate lines: {0}'.format(len(L)))
-print('         - current cost: {0}'.format(C_cost))
-t1 = time.time()
-print('     ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-m = gp.Model()
-m.ModelSense = gp.GRB.MAXIMIZE
-m.Params.MIPFocus = 3
+P_u, P_y = src.solver.service_plans(st_pairs, L, L_st, T, C, RHO)
 
-print('     Started writing variables ... ')
-m._x = m.addVars(((ell, h) for ell in L.keys() for h in H), vtype=gp.GRB.BINARY, name='x')
-m._y, m._u = dict(), dict()
-for s, t in st_pairs:
-    m._y[(s, t)] = m.addVar(vtype=gp.GRB.BINARY, name='y')
-    m._u[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1/min(H), name='u')
-m._z = m.addVars(((ell1, ell2) for ell1, ell2 in T.keys()), vtype=gp.GRB.BINARY, name='z')
-t1 = time.time()
-print('         ... done writing variables!')
-print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
-print('     Started writing constraints ... ')
-print('         Started writing selection constraints ...')
-for ell in L.keys():
-    lhs = gp.quicksum(m._x[(ell, h)] for h in H)
-    rhs = 1
-    m.addConstr(lhs <= rhs)
-t1 = time.time()
-print('             ... done writing selection constraints!')
-print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
-print('         Started writing budget constraint ...')
-lhs = gp.quicksum(L[ell]['length'] / h * var for (ell, h), var in m._x.items())
-rhs = C_cost * BDGT_FACTOR
-m.addConstr(lhs <= rhs)
-t1 = time.time()
-print('             ... done writing budget constraint!')
-print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
-print('         Started writing coverage constraints ...')
-for (s, t), var in m._y.items():
-    rhs = 0
-    for ell in L_st[(s, t)]:
-        for h in H:
-            rhs += m._x[(ell, h)]
-    m.addConstr(var <= rhs)
-t1 = time.time()
-print('             ... done writing coverage constraints!')
-print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
-print('         Started writing quality of service constraints ...')
-for (s, t), var in m._u.items():
-    lb = min(sum(1/h for ell, h in C if ell in L_st[(s,t)]), 1/min(H)) * QS_FACTOR
-    ub = 0
-    for ell in L_st[(s, t)]:
-        for h in H:
-            ub += 1 / h * m._x[(ell, h)]
-    m.addConstr(lb <= var)
-    m.addConstr(var <= ub)
-t1 = time.time()
-print('             ... done writing quality of service constraints!')
-print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
-print('         Started writing transfer constraints ...')
-for (ell1, ell2), var in m._z.items():
-    m.addConstr(var <= m._x[(ell1, min(H))])
-    m.addConstr(var <= m._x[(ell2, min(H))])
-t1 = time.time()
-print('             ... done writing transfer constraints!')
-print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
-print('         ... done writing constraints!')
-t1 = time.time()
-print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
-print('     Started writing warm start ...')
-for (ell, h), var in m._x.items():
-    if (ell, h) in C:
-        var.Start = 1
-    else:
-        var.Start = 0
-print('         ... done writing warm start!')
-t1 = time.time()
-print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
-u_obj = gp.quicksum(max(pr[s], pr[t]) * var for (s, t), var in m._u.items())
-y_obj = gp.quicksum(m._y.values())
-z_obj = gp.quicksum(T[(ell1, ell2)] * var for (ell1, ell2), var in m._z.items())
-
-m.setObjectiveN(u_obj, index=0, priority=3, reltol=REL_TOL)
-m.setObjectiveN(z_obj, index=1, priority=2, reltol=REL_TOL)
-m.setObjectiveN(y_obj, index=2, priority=1, reltol=REL_TOL)
-m.optimize()
-P_u = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
-
-m.setObjectiveN(y_obj, index=0, priority=3, reltol=REL_TOL)
-m.setObjectiveN(u_obj, index=1, priority=2, reltol=REL_TOL)
-m.setObjectiveN(z_obj, index=2, priority=1, reltol=REL_TOL)
-m.optimize()
-P_y = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 
 folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
 folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
