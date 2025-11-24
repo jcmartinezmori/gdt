@@ -27,7 +27,7 @@ def walkable_cover(U):
     return cover
 
 
-def service_plans(st_pairs, L, L_st, T, C, RHO):
+def service_plans(G, st_pairs, L, L_st, T, C):
 
     t0 = time.time()
 
@@ -111,7 +111,7 @@ def service_plans(st_pairs, L, L_st, T, C, RHO):
     t1 = time.time()
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    u_obj = gp.quicksum(max(RHO[s], RHO[t]) * var for (s, t), var in m._u.items())
+    u_obj = gp.quicksum(max(G.nodes[s]['rho'], G.nodes[t]['rho']) * var for (s, t), var in m._u.items())
     y_obj = gp.quicksum(m._y.values())
     z_obj = gp.quicksum(T[(ell1, ell2)] * var for (ell1, ell2), var in m._z.items())
 

@@ -13,37 +13,13 @@ from playwright.async_api import async_playwright
 from pathlib import Path
 
 import src.solver
-from src.solver import *
+import src.instance
 from src.config import *
 np.random.seed(42)
 
-G = ox.graph_from_place(
-    PLACE,
-    network_type='drive',
-    simplify=True,
-    retain_all=False,
-    custom_filter=CUSTOM_FILTER
-)
-# G = ox.graph_from_point(
-#     center_point=CENTER,
-#     dist=1000,
-#     network_type='drive',
-#     simplify=True,
-#     retain_all=False,
-#     custom_filter=CUSTOM_FILTER
-# )
-G = nx.subgraph(G, max(nx.strongly_connected_components(G), key=len))
-U = G.to_undirected()
-D = src.solver.walkable_cover(U)
-RHO = nx.pagerank(U)
-
-forbidden = dict()
-for s in G.nodes():
-    forbidden[s] = set(nx.single_source_dijkstra_path_length(U, s, cutoff=3 * WALKING_DST, weight='length').keys())
-st_pairs = []
-for s, t in it.combinations(D, 2):
-    if t not in forbidden[s] and s not in forbidden[t]:
-        st_pairs.append(tuple(sorted((s, t))))
+G, U = src.instance.graph()
+st_pairs = src.instance.st_pairs(U)
+stops, stops_ref_to_node = src.instance.stops(U)
 
 L_size = 250
 C_size = 10
@@ -54,32 +30,32 @@ C = set()
 
 for ell in range(L_size):
 
-    p, q = np.random.choice(G.nodes(), size=2, replace=False)
+    p, q = np.random.choice(list(stops), size=2, replace=False)
     h = H[np.random.randint(0, len(H))]
 
     p_q_length, p_q_path = nx.single_source_dijkstra(G, source=p, target=q, weight='length')
     q_p_length, q_p_path = nx.single_source_dijkstra(G, source=q, target=p, weight='length')
-    p_q_stops = set(p_q_path)
+    p_q_stops = set(p_q_path).intersection(stops)
     p_q_coverage = set(nx.multi_source_dijkstra_path_length(U, p_q_stops, weight='length', cutoff=WALKING_DST).keys())
-    q_p_stops = set(q_p_path)
+    q_p_stops = set(q_p_path).intersection(stops)
     q_p_coverage = set(nx.multi_source_dijkstra_path_length(U, q_p_stops, weight='length', cutoff=WALKING_DST).keys())
 
-    length = p_q_length + q_p_length
-    path = p_q_path + q_p_path[1:]
-    stops = p_q_stops.union(q_p_stops)
-    coverage = p_q_coverage.intersection(q_p_coverage)
-    transfer_stops = stops.intersection(coverage)
+    ell_length = p_q_length + q_p_length
+    ell_path = p_q_path + q_p_path[1:]
+    ell_stops = p_q_stops.union(q_p_stops)
+    ell_coverage = p_q_coverage.intersection(q_p_coverage)
+    ell_transfer_stops = stops.intersection(ell_coverage)
 
     L[ell] = {
-        'length': length,
-        'path': path,
-        'stops': stops,
-        'coverage': coverage,
-        'transfer_stops': transfer_stops
+        'length': ell_length,
+        'path': ell_path,
+        'stops': ell_stops,
+        'coverage': ell_coverage,
+        'transfer_stops': ell_transfer_stops
     }
 
     for s, t in st_pairs:
-        if s in coverage and t in coverage:
+        if s in ell_coverage and t in ell_coverage:
             L_st[(s, t)].add(ell)
 
     if ell <= C_size:
@@ -102,7 +78,7 @@ print('         - number of s-t pairs: {0}'.format(len(st_pairs)))
 print('         - headway options: {0}'.format(H))
 print('         - number of candidate lines: {0}'.format(len(L)))
 
-P_u, P_y = src.solver.service_plans(st_pairs, L, L_st, T, C, RHO)
+P_u, P_y = src.solver.service_plans(G, st_pairs, L, L_st, T, C)
 
 
 folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)

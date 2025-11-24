@@ -6,19 +6,9 @@ from src.config import *
 
 def current_service_plan(G):
 
-    stops_df = ox.features_from_place(PLACE, STOPS_TAGS).droplevel('element')
-    stops_df = stops_df[stops_df['geometry'].geom_type == 'Point']
-    stops_df['node'] = stops_df.apply(lambda stop: ox.nearest_nodes(G, stop.geometry.x, stop.geometry.y), axis=1)
 
-    lines_query = """
-    [out:json];
-    area["name"="{0}"]["admin_level"="{1}"]->.searchArea;
-    (
-      relation["type"="route"]["route"="bus"](area.searchArea);
-    );
-    out body;
-    """.format(PLACE, ADMIN_LEVEL)
-    lines_response = requests.get('http://overpass-api.de/api/interpreter', params={'data': lines_query}).json()
+
+
     lines = []
     for element in lines_response['elements']:
         stops = []
