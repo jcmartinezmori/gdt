@@ -40,7 +40,8 @@ def service_plans(st_pairs, L, L_st, C, T, **kwargs):
 
     m = gp.Model()
     m.ModelSense = gp.GRB.MAXIMIZE
-    m.Params.MIPFocus = 3
+    m.Params.MIPFocus = MIP_FOCUS
+    m.Params.TimeLimit = TIME_LIMIT
 
     print('     Started writing variables ... ')
     m._x = m.addVars(((ell, h) for ell in L.keys() for h in H), vtype=gp.GRB.BINARY, name='x')
@@ -123,15 +124,23 @@ def service_plans(st_pairs, L, L_st, C, T, **kwargs):
 
     print('     Started optimizing ... ')
 
-    m.setObjectiveN(u_obj, index=0, priority=3, reltol=REL_TOL)
-    m.setObjectiveN(z_obj, index=1, priority=2, reltol=REL_TOL)
-    m.setObjectiveN(y_obj, index=2, priority=1, reltol=REL_TOL)
+    m.setObjective(u_obj)
+    m.optimize()
+    m.addConstr(u_obj >= (1 - REL_TOL) * m.ObjVal)
+    m.setObjective(z_obj)
+    m.optimize()
+    m.addConstr(z_obj >= (1 - REL_TOL) * m.ObjVal)
+    m.setObjective(y_obj)
     m.optimize()
     P_u = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 
-    m.setObjectiveN(y_obj, index=0, priority=3, reltol=REL_TOL)
-    m.setObjectiveN(u_obj, index=1, priority=2, reltol=REL_TOL)
-    m.setObjectiveN(z_obj, index=2, priority=1, reltol=REL_TOL)
+    m.setObjective(y_obj)
+    m.optimize()
+    m.addConstr(y_obj >= (1 - REL_TOL) * m.ObjVal)
+    m.setObjective(u_obj)
+    m.optimize()
+    m.addConstr(u_obj >= (1 - REL_TOL) * m.ObjVal)
+    m.setObjective(z_obj)
     m.optimize()
     P_y = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 

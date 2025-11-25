@@ -123,7 +123,9 @@ def candidate_lines(G, U, W, st_pairs, stops_ref_to_node):
                 if s in ell_coverage and t in ell_coverage:
                     L_st[(s, t)].add(ell)
 
-            C.add((ell, H[2]))
+            if ell in C_FREQ:
+                if C_FREQ[ell] is not None:
+                    C.add((ell, C_FREQ[ell]))
 
     for i in range(NO_RANDOM_LINES):
 
