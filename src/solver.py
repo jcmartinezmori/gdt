@@ -11,7 +11,7 @@ def cover(U, stops=None):
 
     for s in U.nodes():
         if stops is not None:
-            lengths = nx.single_source_dijkstra_path_length(U, s, weight='length', cutoff=COVER_DST_FACTOR * COVER_DST)
+            lengths = nx.single_source_dijkstra_path_length(U, s, weight='length', cutoff=SERVICE_FACTOR * WALKING_DST)
             if set(lengths.keys()).isdisjoint(stops):
                 continue
         m.addConstr(gp.quicksum(m._x[t] for t in U.nodes[s]['coverage']) >= 1)

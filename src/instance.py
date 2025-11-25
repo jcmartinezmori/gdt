@@ -22,7 +22,7 @@ def graph():
     for s in U.nodes():
 
         U.nodes[s]['coverage'] = set(
-            nx.single_source_dijkstra_path_length(U, s, cutoff=COVER_DST, weight='length').keys()
+            nx.single_source_dijkstra_path_length(U, s, cutoff=COVER_FACTOR * WALKING_DST, weight='length').keys()
         )
         G.nodes[s]['coverage'] = U.nodes[s]['coverage']
 
@@ -57,7 +57,7 @@ def cover_and_st_pairs(U, **kwargs):
     for s in W:
         forbidden[s] = set(
             nx.single_source_dijkstra_path_length(
-                U, s, cutoff=FORBIDDEN_DST_FACTOR * WALKING_DST, weight='length'
+                U, s, cutoff=FORBIDDEN_FACTOR * WALKING_DST, weight='length'
             ).keys()
         ).intersection(W)
     st_pairs = []
@@ -68,7 +68,7 @@ def cover_and_st_pairs(U, **kwargs):
     return W, st_pairs
 
 
-def candidate_lines(G, U, W, st_pairs, stops_ref_to_node, no_random=250):
+def candidate_lines(G, U, W, st_pairs, stops_ref_to_node):
 
     L, L_st = dict(), {(s, t): set() for s, t in st_pairs}
     C = set()
@@ -123,9 +123,9 @@ def candidate_lines(G, U, W, st_pairs, stops_ref_to_node, no_random=250):
                 if s in ell_coverage and t in ell_coverage:
                     L_st[(s, t)].add(ell)
 
-            C.add((ell, max(H)))
+            C.add((ell, H[2]))
 
-    for i in range(no_random):
+    for i in range(NO_RANDOM_LINES):
 
         ell = 'r-{0}'.format(i)
         p, q = np.random.choice(list(W), size=2, replace=False)
