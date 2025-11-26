@@ -171,8 +171,10 @@ def transfer_candidates(L):
         if not L[ell1]['transfer_stops'].isdisjoint(L[ell2]['transfer_stops']):
             coverage1 = L[ell1]['coverage']
             coverage2 = L[ell2]['coverage']
-            jac = len(coverage1.symmetric_difference(coverage2)) / len(coverage1.union(coverage2))
+            coverage_sym_diff = coverage1.symmetric_difference(coverage2)
+            coverage_union = coverage1.union(coverage2)
+            jac = len(coverage_sym_diff) / len(coverage_union)
             if jac >= JAC_DST:
-                T[tuple(sorted((ell1, ell2)))] = jac
+                T[tuple(sorted((ell1, ell2)))] = {'jac': jac, 'coverage_sym_diff': coverage_sym_diff}
 
     return T

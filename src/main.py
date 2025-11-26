@@ -5,12 +5,14 @@ import src.instance
 from src.config import *
 
 
-def main(filename, load=False):
+def main(city, solver_params, load=False):
+
+    instance_filename = city
+    solution_filename = city + '_' + solver_params
 
     if load:
-        G = ox.load_graphml('./results/instances/G_{0}.graphml'.format(filename))
-        U = ox.load_graphml('./results/instances/U_{0}.graphml'.format(filename))
-        with open('./results/instances/instance_{0}.pkl'.format(filename), 'rb') as file:
+        G = ox.load_graphml('./results/instances/graph_{0}.graphml'.format(instance_filename))
+        with open('./results/instances/instance_{0}.pkl'.format(instance_filename), 'rb') as file:
             instance = pickle.load(file)
             W, st_pairs, L, L_st, C, T = instance
     else:
@@ -19,13 +21,10 @@ def main(filename, load=False):
         W, st_pairs = src.instance.cover_and_st_pairs(U, stops=stops)
         L, L_st, C = src.instance.candidate_lines(G, U, W, st_pairs, stops_ref_to_node)
         T = src.instance.transfer_candidates(L)
-        ox.save_graphml(G, './results/instances/G_{0}.graphml'.format(filename))
-        ox.save_graphml(U, './results/instances/U_{0}.graphml'.format(filename))
+        ox.save_graphml(G, './results/instances/graph_{0}.graphml'.format(instance_filename))
         instance = (W, st_pairs, L, L_st, C, T)
-        with open('./results/instances/instance_{0}.pkl'.format(filename), 'wb') as file:
+        with open('./results/instances/instance_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(instance, file)
-
-    rho = {(s, t): max(G.nodes[s]['rho'], G.nodes[t]['rho']) for s, t in st_pairs}
 
     print('     Some statistics ... ')
     print('         - number of nodes: {0}'.format(len(W)))
@@ -34,18 +33,19 @@ def main(filename, load=False):
     print('         - number of candidate lines: {0}'.format(len(L)))
     print('         - number of transfer candidates: {0}'.format(len(T)))
 
-    P_u, P_y = src.solver.service_plans(st_pairs, L, L_st, C, T, rho=rho)
+    P_u, P_y = src.solver.service_plans(G, st_pairs, L, L_st, C, T)
 
-    with open('./results/output/P_u_{0}.pkl'.format(filename), 'wb') as file:
+    with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'wb') as file:
         pickle.dump(P_u, file)
-    with open('./results/output/P_y_{0}.pkl'.format(filename), 'wb') as file:
+    with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'wb') as file:
         pickle.dump(P_y, file)
 
 
 if __name__ == '__main__':
-    filename = 'ithaca'
+    city = 'ITHACA'
+    solver_params = 'QS-FACTOR-{0}'.format(QS_FACTOR)
     load = False
-    main(filename, load=load)
+    main(city, solver_params, load=load)
 
 
 # freq_C = {(s, t): 0 for s, t in st_pairs}
@@ -60,27 +60,3 @@ if __name__ == '__main__':
 #                     continue
 #                 if {s, t}.issubset(L[ell1]['coverage'].symmetric_difference(L[ell2]['coverage'])):
 #                     freq_C[(s, t)] += 1 / min(H)
-
-
-# import matplotlib.pyplot as plt
-#
-# values = sorted(freq_C.values())
-# keys = range(len(freq_C))
-#
-#
-# import plotly.graph_objects as go
-#
-# fig = go.Figure(data=[go.Bar(x=keys, y=values)])
-# fig.update_layout(
-#     title='Dictionary Values Sorted',
-#     xaxis_title='Keys',
-#     yaxis_title='Values'
-# )
-#
-# fig.show()
-
-
-
-
-
-
