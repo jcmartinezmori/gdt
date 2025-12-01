@@ -21,12 +21,12 @@ def graph():
 
     for s in U.nodes():
 
-        U.nodes[s]['coverage'] = set(
-            nx.single_source_dijkstra_path_length(U, s, cutoff=COVER_FACTOR * WALKING_DST, weight='length').keys()
+        U.nodes[s]['walk_cover'] = set(
+            nx.single_source_dijkstra_path_length(U, s, cutoff=WALK_COVER_FACTOR * WALK_DST, weight='length').keys()
         )
-        G.nodes[s]['coverage'] = U.nodes[s]['coverage']
+        G.nodes[s]['walk_cover'] = U.nodes[s]['walk_cover']
 
-        U.nodes[s]['rho'] = len(U.nodes[s]['coverage'])
+        U.nodes[s]['rho'] = len(U.nodes[s]['walk_cover'])
         G.nodes[s]['rho'] = U.nodes[s]['rho']
 
     return G, U
@@ -44,31 +44,31 @@ def stops(U):
     return stops, stops_ref_to_node
 
 
-def cover_and_st_pairs(U, **kwargs):
+def walk_cover_and_st_pairs(U, **kwargs):
 
     if 'stops' in kwargs:
         stops = kwargs['stops']
     else:
         stops = None
 
-    W = src.solver.cover(U, stops=stops)
+    W = src.solver.walk_cover(U, stops=stops)
 
-    forbidden = dict()
+    walk_trips = dict()
     for s in W:
-        forbidden[s] = set(
+        walk_trips[s] = set(
             nx.single_source_dijkstra_path_length(
-                U, s, cutoff=FORBIDDEN_FACTOR * WALKING_DST, weight='length'
+                U, s, cutoff=WALK_TRIP_FACTOR * WALK_DST, weight='length'
             ).keys()
         ).intersection(W)
     st_pairs = []
     for s, t in it.combinations(W, 2):
-        if t not in forbidden[s] and s not in forbidden[t]:
+        if t not in walk_trips[s] and s not in walk_trips[t]:
             st_pairs.append(tuple(sorted((s, t))))
 
     return W, st_pairs
 
 
-def candidate_lines(G, U, W, st_pairs, stops_ref_to_node):
+def candidate_lines(G, U, stops, stops_ref_to_node, W, st_pairs):
 
     L, L_st = dict(), {(s, t): set() for s, t in st_pairs}
     C = set()
@@ -105,7 +105,7 @@ def candidate_lines(G, U, W, st_pairs, stops_ref_to_node):
             ell_path.append(ell_stop_seq[-1])
             ell_stops = set(ell_stop_seq).intersection(W)
             ell_coverage = set(
-                nx.multi_source_dijkstra_path_length(U, ell_stops, weight='length', cutoff=WALKING_DST).keys()
+                nx.multi_source_dijkstra_path_length(U, ell_stops, weight='length', cutoff=WALK_DST).keys()
             ).intersection(W)
             ell_transfer_stops = ell_stops.intersection(ell_coverage)
 
@@ -135,13 +135,13 @@ def candidate_lines(G, U, W, st_pairs, stops_ref_to_node):
         p_q_length, p_q_path = nx.single_source_dijkstra(G, source=p, target=q, weight='length')
         q_p_length, q_p_path = nx.single_source_dijkstra(G, source=q, target=p, weight='length')
 
-        p_q_stops = set(p_q_path).intersection(W)
+        p_q_stops = set(p_q_path).intersection(W)  # could also be .intersection(stops)
         p_q_coverage = set(
-            nx.multi_source_dijkstra_path_length(U, p_q_stops, weight='length', cutoff=WALKING_DST).keys()
+            nx.multi_source_dijkstra_path_length(U, p_q_stops, weight='length', cutoff=WALK_DST).keys()
         ).intersection(W)
-        q_p_stops = set(q_p_path).intersection(W)
+        q_p_stops = set(q_p_path).intersection(W)  # could also be .intersection(stops)
         q_p_coverage = set(
-            nx.multi_source_dijkstra_path_length(U, q_p_stops, weight='length', cutoff=WALKING_DST).keys()
+            nx.multi_source_dijkstra_path_length(U, q_p_stops, weight='length', cutoff=WALK_DST).keys()
         ).intersection(W)
 
         ell_length = p_q_length + q_p_length
@@ -160,21 +160,30 @@ def candidate_lines(G, U, W, st_pairs, stops_ref_to_node):
         }
         idx += 1
 
+        for s, t in st_pairs:
+            if s in ell_coverage and t in ell_coverage:
+                L_st[(s, t)].add(ell)
+
     return L, L_st, C
 
 
-def transfer_candidates(L):
+def candidate_transfers(L, st_pairs):
 
-    T = dict()
+    T, T_st = dict(), {(s, t): set() for s, t in st_pairs}
 
     for ell1, ell2 in it.combinations(L.keys(), 2):
         if not L[ell1]['transfer_stops'].isdisjoint(L[ell2]['transfer_stops']):
-            coverage1 = L[ell1]['coverage']
-            coverage2 = L[ell2]['coverage']
-            coverage_sym_diff = coverage1.symmetric_difference(coverage2)
-            coverage_union = coverage1.union(coverage2)
-            jac = len(coverage_sym_diff) / len(coverage_union)
-            if jac >= JAC_DST:
-                T[tuple(sorted((ell1, ell2)))] = {'jac': jac, 'coverage_sym_diff': coverage_sym_diff}
+            ell1_coverage = L[ell1]['coverage']
+            ell2_coverage = L[ell2]['coverage']
+            ell1_ell2_st_coverage = {
+                tuple(sorted((s, t)))
+                for s, t in it.product(ell1_coverage - ell2_coverage, ell2_coverage - ell1_coverage)
+            }.intersection(st_pairs)
+            if ell1_ell2_st_coverage:
+                T[tuple(sorted((ell1, ell2)))] = {
+                    'ell1_ell2_st_coverage': ell1_ell2_st_coverage
+                }
+                for s, t in ell1_ell2_st_coverage:
+                    T_st[(s, t)].add(tuple(sorted((ell1, ell2))))
 
-    return T
+    return T, T_st

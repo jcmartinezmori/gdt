@@ -5,24 +5,24 @@ import src.instance
 from src.config import *
 
 
-def main(city, solver_params, load=False):
+def main(filename, solver_params, load=False):
 
-    instance_filename = city
-    solution_filename = city + '_' + solver_params
+    instance_filename = filename
+    solution_filename = filename + '_' + solver_params
 
     if load:
         G = ox.load_graphml('./results/instances/graph_{0}.graphml'.format(instance_filename))
         with open('./results/instances/instance_{0}.pkl'.format(instance_filename), 'rb') as file:
             instance = pickle.load(file)
-            W, st_pairs, L, L_st, C, T = instance
+            W, st_pairs, L, L_st, C, T, T_st = instance
     else:
         G, U = src.instance.graph()
         stops, stops_ref_to_node = src.instance.stops(U)
-        W, st_pairs = src.instance.cover_and_st_pairs(U, stops=stops)
-        L, L_st, C = src.instance.candidate_lines(G, U, W, st_pairs, stops_ref_to_node)
-        T = src.instance.transfer_candidates(L)
+        W, st_pairs = src.instance.walk_cover_and_st_pairs(U, stops=stops)
+        L, L_st, C = src.instance.candidate_lines(G, U, stops, stops_ref_to_node, W, st_pairs)
+        T, T_st = src.instance.candidate_transfers(L, st_pairs)
         ox.save_graphml(G, './results/instances/graph_{0}.graphml'.format(instance_filename))
-        instance = (W, st_pairs, L, L_st, C, T)
+        instance = (W, st_pairs, L, L_st, C, T, T_st)
         with open('./results/instances/instance_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(instance, file)
 
@@ -33,7 +33,7 @@ def main(city, solver_params, load=False):
     print('         - number of candidate lines: {0}'.format(len(L)))
     print('         - number of transfer candidates: {0}'.format(len(T)))
 
-    P_u, P_y = src.solver.service_plans(G, st_pairs, L, L_st, C, T)
+    P_u, P_y = src.solver.service_plans(G, st_pairs, L, L_st, C, T, T_st)
 
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'wb') as file:
         pickle.dump(P_u, file)
@@ -42,10 +42,11 @@ def main(city, solver_params, load=False):
 
 
 if __name__ == '__main__':
-    city = 'ITHACA'
-    solver_params = 'QS-FACTOR-{0}'.format(QS_FACTOR)
-    load = False
-    main(city, solver_params, load=load)
+
+    filename = 'ITHACA'
+    solver_params = 'LS-FACTOR-{0}'.format(LS_FACTOR)
+    load = True
+    main(filename, solver_params, load=load)
 
 
 # freq_C = {(s, t): 0 for s, t in st_pairs}
