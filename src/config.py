@@ -13,11 +13,13 @@ PLACE = 'Tompkins County'
 RETAIN_ALL = False
 SIMPLIFY = False
 GTFS = 'tcat-ny-us'
+TAGS = {'amenity': ['bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'ice_cream', 'pub', 'restaurant']}
+
 
 # --- MODEL PARAMETERS --- #
 BUDGET_FACTOR = 1
 H = [5, 10, 15, 30, 45, 60]
-IC_FACTOR = 1.0
+IC_FACTOR = 0.5
 NO_RANDOM_LINES = 250
 SERVICE_COVER_FACTOR = 3
 TRANSFER_MIN_H = 10

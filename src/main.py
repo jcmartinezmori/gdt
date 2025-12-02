@@ -47,17 +47,3 @@ if __name__ == '__main__':
     solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
     load = True
     main(filename, solver_params, load=load)
-
-
-# freq_C = {(s, t): 0 for s, t in st_pairs}
-# for idx, (s, t) in enumerate(st_pairs):
-#     print(idx)
-#     for ell1, h1 in C:
-#         if ell1 in L_st[(s, t)]:
-#             freq_C[(s, t)] += 1/h1
-#         else:
-#             for ell2, h2 in C:
-#                 if ell1 == ell2 or ell2 in L_st[(s, t)] or h1 > min(H) or h2 > min(H):
-#                     continue
-#                 if {s, t}.issubset(L[ell1]['coverage'].symmetric_difference(L[ell2]['coverage'])):
-#                     freq_C[(s, t)] += 1 / min(H)

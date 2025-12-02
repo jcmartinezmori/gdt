@@ -22,13 +22,24 @@ def graph():
 
     for s in U.nodes():
 
+        U.nodes[s]['feature_ct'] = 0
+        G.nodes[s]['feature_ct'] = U.nodes[s]['feature_ct']
+
         U.nodes[s]['walk_cover'] = set(
             nx.single_source_dijkstra_path_length(U, s, cutoff=WALK_COVER_FACTOR * WALK_DIST, weight='length').keys()
         )
         G.nodes[s]['walk_cover'] = U.nodes[s]['walk_cover']
 
-        U.nodes[s]['rho'] = len(U.nodes[s]['walk_cover'])
-        G.nodes[s]['rho'] = len(G.nodes[s]['walk_cover'])
+    features_df = ox.features_from_place(PLACE, TAGS)
+    for _, feature in features_df.iterrows():
+        s = ox.nearest_nodes(U, feature.geometry.centroid.x, feature.geometry.centroid.y)
+        U.nodes[s]['feature_ct'] += 1
+        G.nodes[s]['feature_ct'] = U.nodes[s]['feature_ct']
+
+    for s in U.nodes():
+
+        U.nodes[s]['rho'] = 1 + sum(U.nodes[t]['feature_ct'] for t in nx.single_source_dijkstra_path_length(U, s, cutoff=WALK_TRIP_FACTOR * WALK_DIST, weight='length').keys())
+        G.nodes[s]['rho'] = U.nodes[s]['rho']
 
     return G, U
 
