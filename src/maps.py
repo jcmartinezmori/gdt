@@ -219,5 +219,5 @@ def frequencies(filename, solver_params):
 if __name__ == '__main__':
     filename = 'ITHACA'
     solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
-    main(filename, solver_params)
-    # frequencies(filename, solver_params)
+    # main(filename, solver_params)
+    frequencies(filename, solver_params)
