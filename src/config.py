@@ -19,7 +19,7 @@ TAGS = {'amenity': ['bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'ice
 # --- MODEL PARAMETERS --- #
 BUDGET_FACTOR = 1
 H = [5, 10, 15, 30, 45, 60]
-IC_FACTOR = 0.5
+IC_FACTOR = 0.0
 NO_RANDOM_LINES = 250
 SERVICE_COVER_FACTOR = 3
 TRANSFER_MIN_H = 10
