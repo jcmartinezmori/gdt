@@ -12,6 +12,8 @@ CUSTOM_FILTER = (
 STOPS_TAGS = {
     'public_transport': 'platform'
 }
+REQUIRED_LINE_TAGS = {'TCAT'}
+FORBIDDEN_LINE_TAGS = {'Weekend'}
 
 
 H = [5, 10, 15, 30, 45, 60]
