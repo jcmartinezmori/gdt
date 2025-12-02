@@ -36,9 +36,9 @@ def main(filename, solver_params):
         ).add_to(folium_map)
     for ell, h in C:
         ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
-        HEXCOLOR = HEXCOLORS[L[ell]['idx'] % len(HEXCOLORS)]
+        HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=ell
+                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=L[ell]['route_id']
         ).add_to(folium_map)
     folium_map.save('./results/frames/html/current_plan_{0}.html'.format(solution_filename))
 
@@ -51,9 +51,9 @@ def main(filename, solver_params):
         ).add_to(folium_map)
     for ell in L.keys():
         ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
-        HEXCOLOR = HEXCOLORS[L[ell]['idx'] % len(HEXCOLORS)]
+        HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=4, opacity=1, tooltip=ell
+                ell_coords, color=HEXCOLOR, weight=4, opacity=1, tooltip=L[ell]['route_id']
         ).add_to(folium_map)
     folium_map.save('./results/frames/html/candidate_lines_{0}.html'.format(solution_filename))
 
@@ -66,9 +66,9 @@ def main(filename, solver_params):
         ).add_to(folium_map)
     for ell, h in P_u:
         ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
-        HEXCOLOR = HEXCOLORS[L[ell]['idx'] % len(HEXCOLORS)]
+        HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=ell
+                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=L[ell]['route_id']
         ).add_to(folium_map)
     folium_map.save('./results/frames/html/ridership_plan_{0}.html'.format(solution_filename))
 
@@ -81,9 +81,9 @@ def main(filename, solver_params):
         ).add_to(folium_map)
     for ell, h in P_y:
         ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
-        HEXCOLOR = HEXCOLORS[L[ell]['idx'] % len(HEXCOLORS)]
+        HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=ell
+                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=L[ell]['route_id']
         ).add_to(folium_map)
     folium_map.save('./results/frames/html/coverage_plan_{0}.html'.format(solution_filename))
 
@@ -111,7 +111,7 @@ def frequencies(filename, solver_params):
             except KeyError:
                 continue
     for (ell1, h1), (ell2, h2) in it.combinations(C_dict.items(), 2):
-        if h1 <= TRANSFER_H and h2 <= TRANSFER_H:
+        if h1 <= TRANSFER_MIN_H and h2 <= TRANSFER_MIN_H:
             if tuple(sorted((ell1, ell2))) in T:
                 for s, t in T[tuple(sorted((ell1, ell2)))]['ell1_ell2_st_coverage']:
                     freq_C[tuple(sorted((s, t)))] += 1/max(h1, h2)
@@ -125,7 +125,7 @@ def frequencies(filename, solver_params):
             except KeyError:
                 continue
     for (ell1, h1), (ell2, h2) in it.combinations(P_u_dict.items(), 2):
-        if h1 <= TRANSFER_H and h2 <= TRANSFER_H:
+        if h1 <= TRANSFER_MIN_H and h2 <= TRANSFER_MIN_H:
             if tuple(sorted((ell1, ell2))) in T:
                 for s, t in T[tuple(sorted((ell1, ell2)))]['ell1_ell2_st_coverage']:
                     freq_P_u[tuple(sorted((s, t)))] += 1/max(h1, h2)
@@ -139,7 +139,7 @@ def frequencies(filename, solver_params):
             except KeyError:
                 continue
     for (ell1, h1), (ell2, h2) in it.combinations(P_y_dict.items(), 2):
-        if h1 <= TRANSFER_H and h2 <= TRANSFER_H:
+        if h1 <= TRANSFER_MIN_H and h2 <= TRANSFER_MIN_H:
             if tuple(sorted((ell1, ell2))) in T:
                 for s, t in T[tuple(sorted((ell1, ell2)))]['ell1_ell2_st_coverage']:
                     freq_P_y[tuple(sorted((s, t)))] += 1/max(h1, h2)
@@ -149,7 +149,7 @@ def frequencies(filename, solver_params):
 
     fig = make_subplots(
         rows=1, cols=1,
-        subplot_titles=('Distribution of Level of Service (with {0:.1f}-Incentive Compatibility)'.format(LS_FACTOR),)
+        subplot_titles=('Distribution of Level of Service (with {0:.1f}-Incentive Compatibility)'.format(IC_FACTOR),)
     )
 
     for col in freq_df.columns:
@@ -218,6 +218,6 @@ def frequencies(filename, solver_params):
 
 if __name__ == '__main__':
     filename = 'ITHACA'
-    solver_params = 'LS-FACTOR-{0}'.format(LS_FACTOR)
-    # main(filename, solver_params)
-    frequencies(filename, solver_params)
+    solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
+    main(filename, solver_params)
+    # frequencies(filename, solver_params)

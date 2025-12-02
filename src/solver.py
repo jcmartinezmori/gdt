@@ -12,7 +12,7 @@ def walk_cover(U, stops=None):
     for s in U.nodes():
         if stops is not None:
             service_cover = nx.single_source_dijkstra_path_length(
-                U, s, weight='length', cutoff=SERVICE_COVER_FACTOR * WALK_DST
+                U, s, weight='length', cutoff=SERVICE_COVER_FACTOR * WALK_DIST
             )
             if set(service_cover.keys()).isdisjoint(stops):
                 continue
@@ -64,7 +64,7 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
 
     print('         Started writing budget constraint ...')
     lhs = gp.quicksum(L[ell]['length'] / h * var for (ell, h), var in m._x.items())
-    rhs = sum(L[ell]['length'] * 1 / h for ell, h in C) * BDGT_FACTOR
+    rhs = sum(L[ell]['length'] * 1 / h for ell, h in C) * BUDGET_FACTOR
     m.addConstr(lhs <= rhs)
     t1 = time.time()
     print('             ... done writing budget constraint!')
@@ -83,7 +83,7 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
 
     print('         Started writing quality of service constraints ...')
     for (s, t), var in m._u.items():
-        lb = min(sum(1 / h for ell, h in C if ell in L_st[(s, t)]), 1 / min(H)) * LS_FACTOR
+        lb = min(sum(1 / h for ell, h in C if ell in L_st[(s, t)]), 1 / min(H)) * IC_FACTOR
         ub = 0
         for ell in L_st[(s, t)]:
             for h in H:
@@ -100,8 +100,8 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
         m.addConstr(var <= 1 - m._y[(s, t)])
         m.addConstr(var <= gp.quicksum(m._t[(ell1, ell2)] for ell1, ell2 in T_st[(s, t)]))
     for (ell1, ell2), var in m._t.items():
-        m.addConstr(var <= gp.quicksum(m._x[(ell1, h)] for h in H if h <= TRANSFER_H))
-        m.addConstr(var <= gp.quicksum(m._x[(ell2, h)] for h in H if h <= TRANSFER_H))
+        m.addConstr(var <= gp.quicksum(m._x[(ell1, h)] for h in H if h <= TRANSFER_MIN_H))
+        m.addConstr(var <= gp.quicksum(m._x[(ell2, h)] for h in H if h <= TRANSFER_MIN_H))
     t1 = time.time()
     print('             ... done writing transfer constraints!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))

@@ -17,9 +17,9 @@ def main(filename, solver_params, load=False):
             W, st_pairs, L, L_st, C, T, T_st = instance
     else:
         G, U = src.instance.graph()
-        stops, stops_ref_to_node = src.instance.new_stops(U)
+        stops, stops_id_to_node = src.instance.stops(U)
         W, st_pairs = src.instance.walk_cover_and_st_pairs(U, stops=stops)
-        L, L_st, C = src.instance.new_candidate_lines(G, U, stops, stops_ref_to_node, W, st_pairs)
+        L, L_st, C = src.instance.candidate_lines(G, U, stops, stops_id_to_node, W, st_pairs)
         T, T_st = src.instance.candidate_transfers(L, st_pairs)
         ox.save_graphml(G, './results/instances/graph_{0}.graphml'.format(instance_filename))
         instance = (W, st_pairs, L, L_st, C, T, T_st)
@@ -44,8 +44,8 @@ def main(filename, solver_params, load=False):
 if __name__ == '__main__':
 
     filename = 'ITHACA'
-    solver_params = 'LS-FACTOR-{0}'.format(LS_FACTOR)
-    load = False
+    solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
+    load = True
     main(filename, solver_params, load=load)
 
 
