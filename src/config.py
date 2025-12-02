@@ -13,7 +13,8 @@ PLACE = 'Tompkins County'
 RETAIN_ALL = False
 SIMPLIFY = False
 GTFS = 'tcat-ny-us'
-TAGS = {'amenity': ['bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'ice_cream', 'pub', 'restaurant']}
+# TAGS = {'amenity': ['bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'ice_cream', 'pub', 'restaurant']}
+TAGS = {'amenity': True, 'shop': True, 'office': True}
 
 
 # --- MODEL PARAMETERS --- #

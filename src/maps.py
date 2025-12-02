@@ -31,7 +31,7 @@ def main(filename, solver_params):
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=1, weight=0,
+            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=2.5, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell, h in C:
@@ -46,7 +46,7 @@ def main(filename, solver_params):
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=1, weight=0,
+            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=2.5, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell in L.keys():
@@ -61,7 +61,7 @@ def main(filename, solver_params):
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=1, weight=0,
+            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=2.5, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell, h in P_u:
@@ -76,7 +76,7 @@ def main(filename, solver_params):
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=1, weight=0,
+            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=2.5, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell, h in P_y:
@@ -88,7 +88,7 @@ def main(filename, solver_params):
     folium_map.save('./results/frames/html/coverage_plan_{0}.html'.format(solution_filename))
 
 
-def frequencies(filename, solver_params):
+def level_of_service(filename, solver_params):
 
     instance_filename = filename
     solution_filename = filename + '_' + solver_params

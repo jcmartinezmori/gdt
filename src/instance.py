@@ -38,7 +38,7 @@ def graph():
 
     for s in U.nodes():
 
-        U.nodes[s]['rho'] = 1 + sum(U.nodes[t]['feature_ct'] for t in nx.single_source_dijkstra_path_length(U, s, cutoff=WALK_TRIP_FACTOR * WALK_DIST, weight='length').keys())
+        U.nodes[s]['rho'] = 1 + sum(U.nodes[t]['feature_ct'] for t in nx.single_source_dijkstra_path_length(U, s, cutoff=WALK_DIST, weight='length').keys())
         G.nodes[s]['rho'] = U.nodes[s]['rho']
 
     return G, U
