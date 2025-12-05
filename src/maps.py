@@ -18,10 +18,7 @@ def main(filename, solver_params):
     instance_filename = filename
     solution_filename = filename + '_' + solver_params
 
-    G = ox.load_graphml('./results/instances/graph_{0}.graphml'.format(instance_filename))
-    with open('./results/instances/instance_{0}.pkl'.format(instance_filename), 'rb') as file:
-        instance = pickle.load(file)
-        W, st_pairs, L, L_st, C, T, T_st = instance
+    G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st = src.instance.load_instance(instance_filename)
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
         P_u = pickle.load(file)
     with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
@@ -93,10 +90,7 @@ def level_of_service(filename, solver_params):
     instance_filename = filename
     solution_filename = filename + '_' + solver_params
 
-    G = ox.load_graphml('./results/instances/graph_{0}.graphml'.format(instance_filename))
-    with open('./results/instances/instance_{0}.pkl'.format(instance_filename), 'rb') as file:
-        instance = pickle.load(file)
-        W, st_pairs, L, L_st, C, T, T_st = instance
+    G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st = src.instance.load_instance(instance_filename)
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
         P_u = pickle.load(file)
     with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
@@ -105,7 +99,7 @@ def level_of_service(filename, solver_params):
     C_dict = {ell: h for ell, h in C}
     freq_C = {(s, t): 0 for s, t in st_pairs}
     for ell, h in C_dict.items():
-        for s, t in it.combinations(L[ell]['coverage'], 2):
+        for s, t in it.combinations(L[ell]['walk_cover'], 2):
             try:
                 freq_C[tuple(sorted((s, t)))] += 1/h
             except KeyError:
@@ -119,7 +113,7 @@ def level_of_service(filename, solver_params):
     P_u_dict = {ell: h for ell, h in P_u}
     freq_P_u = {(s, t): 0 for s, t in st_pairs}
     for ell, h in P_u_dict.items():
-        for s, t in it.combinations(L[ell]['coverage'], 2):
+        for s, t in it.combinations(L[ell]['walk_cover'], 2):
             try:
                 freq_P_u[tuple(sorted((s, t)))] += 1/h
             except KeyError:
@@ -133,7 +127,7 @@ def level_of_service(filename, solver_params):
     P_y_dict = {ell: h for ell, h in P_y}
     freq_P_y = {(s, t): 0 for s, t in st_pairs}
     for ell, h in P_y_dict.items():
-        for s, t in it.combinations(L[ell]['coverage'], 2):
+        for s, t in it.combinations(L[ell]['walk_cover'], 2):
             try:
                 freq_P_y[tuple(sorted((s, t)))] += 1/h
             except KeyError:
@@ -220,4 +214,4 @@ if __name__ == '__main__':
     filename = 'ITHACA'
     solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
     main(filename, solver_params)
-    frequencies(filename, solver_params)
+    level_of_service(filename, solver_params)

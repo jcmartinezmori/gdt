@@ -4,22 +4,22 @@ import time
 from src.config import *
 
 
-def walk_cover(U, stops=None):
+def walk_cover(U, stop_nodes=None):
 
     m = gp.Model()
     m._x = m.addVars(U.nodes(), vtype=gp.GRB.BINARY, name='x')
 
     for s in U.nodes():
-        if stops is not None:
+        if stop_nodes is not None:
             service_cover = nx.single_source_dijkstra_path_length(
                 U, s, weight='length', cutoff=SERVICE_COVER_FACTOR * WALK_DIST
             )
-            if set(service_cover.keys()).isdisjoint(stops):
+            if set(service_cover.keys()).isdisjoint(stop_nodes.values()):
                 continue
         m.addConstr(gp.quicksum(m._x[t] for t in U.nodes[s]['walk_cover']) >= 1)
-    if stops is not None:
-        for stop in stops:
-            m.addConstr(m._x[stop] == 1)
+    if stop_nodes is not None:
+        for stop_node in stop_nodes.values():
+            m.addConstr(m._x[stop_node] == 1)
 
     obj = gp.quicksum(m._x.values())
 

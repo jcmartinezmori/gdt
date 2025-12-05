@@ -11,20 +11,41 @@ def main(filename, solver_params, load=False):
     solution_filename = filename + '_' + solver_params
 
     if load:
-        G = ox.load_graphml('./results/instances/graph_{0}.graphml'.format(instance_filename))
-        with open('./results/instances/instance_{0}.pkl'.format(instance_filename), 'rb') as file:
-            instance = pickle.load(file)
-            W, st_pairs, L, L_st, C, T, T_st = instance
+
+        G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st = src.instance.load_instance(instance_filename)
+
     else:
-        G, U = src.instance.graph()
-        stops, stops_id_to_node = src.instance.stops(U)
-        W, st_pairs = src.instance.walk_cover_and_st_pairs(U, stops=stops)
-        L, L_st, C = src.instance.candidate_lines(G, U, stops, stops_id_to_node, W, st_pairs)
-        T, T_st = src.instance.candidate_transfers(L, st_pairs)
-        ox.save_graphml(G, './results/instances/graph_{0}.graphml'.format(instance_filename))
-        instance = (W, st_pairs, L, L_st, C, T, T_st)
-        with open('./results/instances/instance_{0}.pkl'.format(instance_filename), 'wb') as file:
-            pickle.dump(instance, file)
+
+        G, U, B = src.instance.graphs()
+        ox.save_graphml(G, './results/instances/G_{0}.graphml'.format(instance_filename))
+        ox.save_graphml(U, './results/instances/U_{0}.graphml'.format(instance_filename))
+        ox.save_graphml(B, './results/instances/B_{0}.graphml'.format(instance_filename))
+
+        stop_nodes = src.instance.stop_nodes(U)
+        with open('./results/instances/stop_nodes_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(stop_nodes, file)
+
+        W, st_pairs, dists = src.instance.walk_cover_st_pairs_and_dists(U, stop_nodes=stop_nodes)
+        with open('./results/instances/W_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(W, file)
+        with open('./results/instances/st_pairs_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(st_pairs, file)
+        with open('./results/instances/dists_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(dists, file)
+
+        L, L_st, C = src.instance.candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists)
+        with open('./results/instances/L_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(L, file)
+        with open('./results/instances/L_st_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(L_st, file)
+        with open('./results/instances/C_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(C, file)
+
+        T, T_st = src.instance.candidate_transfers(G, B, W, st_pairs, dists, L, L_st)
+        with open('./results/instances/T_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(T, file)
+        with open('./results/instances/T_st_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(T_st, file)
 
     print('     Some statistics ... ')
     print('         - number of nodes: {0}'.format(len(W)))
