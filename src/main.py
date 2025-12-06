@@ -66,5 +66,5 @@ if __name__ == '__main__':
 
     filename = 'ITHACA'
     solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
-    load = False
+    load = True
     main(filename, solver_params, load=load)

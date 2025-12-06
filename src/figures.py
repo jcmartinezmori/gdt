@@ -10,10 +10,11 @@ from playwright.async_api import async_playwright
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pathlib import Path
+import src.instance
 from src.config import *
 
 
-def main(filename, solver_params):
+def maps(filename, solver_params):
 
     instance_filename = filename
     solution_filename = filename + '_' + solver_params
@@ -24,6 +25,7 @@ def main(filename, solver_params):
     with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
         P_y = pickle.load(file)
 
+    # current service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
@@ -37,8 +39,9 @@ def main(filename, solver_params):
         folium.PolyLine(
                 ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=L[ell]['route_id']
         ).add_to(folium_map)
-    folium_map.save('./results/frames/html/current_plan_{0}.html'.format(solution_filename))
+    folium_map.save('./results/frames/html/current_service_plan_{0}.html'.format(solution_filename))
 
+    # candidate lines
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
@@ -54,6 +57,7 @@ def main(filename, solver_params):
         ).add_to(folium_map)
     folium_map.save('./results/frames/html/candidate_lines_{0}.html'.format(solution_filename))
 
+    # ridership service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
@@ -67,8 +71,9 @@ def main(filename, solver_params):
         folium.PolyLine(
                 ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=L[ell]['route_id']
         ).add_to(folium_map)
-    folium_map.save('./results/frames/html/ridership_plan_{0}.html'.format(solution_filename))
+    folium_map.save('./results/frames/html/ridership_service_plan_{0}.html'.format(solution_filename))
 
+    # coverage service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
@@ -82,7 +87,7 @@ def main(filename, solver_params):
         folium.PolyLine(
                 ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=L[ell]['route_id']
         ).add_to(folium_map)
-    folium_map.save('./results/frames/html/coverage_plan_{0}.html'.format(solution_filename))
+    folium_map.save('./results/frames/html/coverage_service_plan_{0}.html'.format(solution_filename))
 
 
 def level_of_service(filename, solver_params):
@@ -213,5 +218,5 @@ def level_of_service(filename, solver_params):
 if __name__ == '__main__':
     filename = 'ITHACA'
     solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
-    main(filename, solver_params)
+    maps(filename, solver_params)
     level_of_service(filename, solver_params)

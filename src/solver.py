@@ -37,17 +37,15 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
 
     m = gp.Model()
     m.ModelSense = gp.GRB.MAXIMIZE
-    m.Params.MIPFocus = MIP_FOCUS
     m.Params.TimeLimit = TIME_LIMIT
 
     print('     Started writing variables ... ')
     m._x = m.addVars(((ell, h) for ell in L.keys() for h in H), vtype=gp.GRB.BINARY, name='x')
-    m._y, m._z, m._u = dict(), dict(), dict()
+    m._y, m._u = dict(), dict()
     for s, t in st_pairs:
         m._y[(s, t)] = m.addVar(vtype=gp.GRB.BINARY, name='y')
-        m._z[(s, t)] = m.addVar(vtype=gp.GRB.BINARY, name='z')
         m._u[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1 / min(H), name='u')
-    m._t = m.addVars(((ell1, ell2) for ell1, ell2 in T.keys()), vtype=gp.GRB.BINARY, name='t')
+    m._t = m.addVars(((ell1, ell2) for ell1, ell2 in T.keys()), vtype=gp.GRB.CONTINUOUS, lb=0, ub=1 / min(H), name='t')
     t1 = time.time()
     print('         ... done writing variables!')
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
@@ -62,32 +60,39 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
     print('             ... done writing selection constraints!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
+    print('         Started writing transfer constraints ...')
+    for (ell1, ell2), var in m._t.items():
+        m.addConstr(var <= gp.quicksum(1 / h * m._x[(ell1, h)] for h in H if h <= TRANSFER_MIN_H))
+        m.addConstr(var <= gp.quicksum(1 / h * m._x[(ell2, h)] for h in H if h <= TRANSFER_MIN_H))
+    t1 = time.time()
+    print('             ... done writing transfer constraints!')
+    print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
+
     print('         Started writing budget constraint ...')
     lhs = gp.quicksum(L[ell]['length'] / h * var for (ell, h), var in m._x.items())
-    rhs = sum(L[ell]['length'] * 1 / h for ell, h in C) * BUDGET_FACTOR
+    rhs = sum(L[ell]['length'] / h for ell, h in C) * BUDGET_FACTOR
     m.addConstr(lhs <= rhs)
     t1 = time.time()
     print('             ... done writing budget constraint!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    print('         Started writing coverage constraints ...')
-    for (s, t), var in m._y.items():
-        rhs = 0
-        for ell in L_st[(s, t)]:
-            for h in H:
-                rhs += m._x[(ell, h)]
-        m.addConstr(var <= rhs)
-    t1 = time.time()
-    print('             ... done writing coverage constraints!')
-    print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
     print('         Started writing quality of service constraints ...')
+    C_dict = {ell: h for ell, h in C}
     for (s, t), var in m._u.items():
-        lb = min(sum(1 / h for ell, h in C if ell in L_st[(s, t)]), 1 / min(H)) * IC_FACTOR
+        lb = 0
+        for ell in L_st[(s, t)]:
+            if ell in C_dict.keys():
+                lb += 1 / C_dict[ell]
+        for ell1, ell2 in T_st[(s, t)]:
+            if ell1 in C_dict.keys() and ell2 in C_dict.keys():
+                lb += min(1 / C_dict[ell1], 1/C_dict[ell2])
+        lb = min(1 / min(H), lb) * IC_FACTOR
         ub = 0
         for ell in L_st[(s, t)]:
             for h in H:
                 ub += 1 / h * m._x[(ell, h)]
+        for ell1, ell2 in T_st[(s, t)]:
+            ub += m._t[(ell1, ell2)]
         m.addConstr(lb <= var)
         m.addConstr(var <= ub)
         m.addConstr(var <= m._y[(s, t)])
@@ -95,15 +100,15 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
     print('             ... done writing quality of service constraints!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    print('         Started writing transfer constraints ...')
-    for (s, t), var in m._z.items():
-        m.addConstr(var <= 1 - m._y[(s, t)])
-        m.addConstr(var <= gp.quicksum(m._t[(ell1, ell2)] for ell1, ell2 in T_st[(s, t)]))
-    for (ell1, ell2), var in m._t.items():
-        m.addConstr(var <= gp.quicksum(m._x[(ell1, h)] for h in H if h <= TRANSFER_MIN_H))
-        m.addConstr(var <= gp.quicksum(m._x[(ell2, h)] for h in H if h <= TRANSFER_MIN_H))
+    print('         Started writing coverage (strengthening) constraints ...')
+    for (s, t), var in m._y.items():
+        for ell in L_st[(s, t)]:
+            for h in H:
+                m.addConstr(m._x[(ell, h)] <= var)
+        for ell1, ell2 in T_st[(s, t)]:
+            m.addConstr(m._t[(ell1, ell2)] <= var)
     t1 = time.time()
-    print('             ... done writing transfer constraints!')
+    print('             ... done writing coverage (strengthening) constraints!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
     print('         ... done writing constraints!')
@@ -120,32 +125,28 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
     t1 = time.time()
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    u_obj = gp.quicksum(max(G.nodes[s]['rho'], G.nodes[t]['rho']) * var for (s, t), var in m._u.items())
-    y_obj = gp.quicksum(m._y.values())
-    z_obj = gp.quicksum(m._z.values())
+    ridership_obj = gp.quicksum(max(G.nodes[s]['rho'], G.nodes[t]['rho']) * var for (s, t), var in m._u.items())
+    coverage_obj = gp.quicksum(m._y.values())
 
     print('     Started optimizing ... ')
 
-    m.setObjective(u_obj)
+    m.setObjective(ridership_obj)
+    m.Params.MIPFocus = MIP_FOCUS
     m.optimize()
-    c_u = m.addConstr(u_obj >= (1 - REL_TOL) * m.ObjVal)
-    m.setObjective(z_obj)
-    m.optimize()
-    c_z = m.addConstr(z_obj >= (1 - REL_TOL) * m.ObjVal)
-    m.setObjective(y_obj)
+    c_ridership = m.addConstr(ridership_obj >= (1 - REL_TOL) * m.ObjVal)
+    m.setObjective(coverage_obj)
+    m.Params.MIPFocus = 3
     m.optimize()
     P_u = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 
-    m.remove(c_u)
-    m.remove(c_z)
+    m.remove(c_ridership)
 
-    m.setObjective(y_obj)
+    m.setObjective(coverage_obj)
+    m.Params.MIPFocus = MIP_FOCUS
     m.optimize()
-    m.addConstr(y_obj >= (1 - REL_TOL) * m.ObjVal)
-    m.setObjective(u_obj)
-    m.optimize()
-    m.addConstr(u_obj >= (1 - REL_TOL) * m.ObjVal)
-    m.setObjective(z_obj)
+    m.addConstr(coverage_obj >= (1 - REL_TOL) * m.ObjVal)
+    m.setObjective(ridership_obj)
+    m.Params.MIPFocus = 3
     m.optimize()
     P_y = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 
