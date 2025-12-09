@@ -37,7 +37,9 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
 
     m = gp.Model()
     m.ModelSense = gp.GRB.MAXIMIZE
+    m.Params.MIPFocus = MIP_FOCUS
     m.Params.TimeLimit = TIME_LIMIT
+    m.NumStart = 2
 
     print('     Started writing variables ... ')
     m._x = m.addVars(((ell, h) for ell in L.keys() for h in H), vtype=gp.GRB.BINARY, name='x')
@@ -62,21 +64,25 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
 
     print('         Started writing transfer constraints ...')
     for (ell1, ell2), var in m._t.items():
-        m.addConstr(var <= gp.quicksum(1 / h * m._x[(ell1, h)] for h in H if h <= TRANSFER_MIN_H))
-        m.addConstr(var <= gp.quicksum(1 / h * m._x[(ell2, h)] for h in H if h <= TRANSFER_MIN_H))
+        m.addConstr(var <= gp.quicksum(1 / h * m._x[(ell1, h)] for h in H))
+        m.addConstr(var <= gp.quicksum(1 / h * m._x[(ell2, h)] for h in H))
+        m.addConstr(var <= 2 - gp.quicksum(m._x[(ell1, h)] + m._x[(ell2, h)] for h in H if h > TRANSFER_MIN_H))
     t1 = time.time()
     print('             ... done writing transfer constraints!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    print('         Started writing budget constraint ...')
+    print('         Started writing budget constraints ...')
     lhs = gp.quicksum(L[ell]['length'] / h * var for (ell, h), var in m._x.items())
-    rhs = sum(L[ell]['length'] / h for ell, h in C) * BUDGET_FACTOR
+    rhs = sum(L[ell]['length'] / h for ell, h in C) * COST_FACTOR
+    m.addConstr(lhs <= rhs)
+    lhs = gp.quicksum(m._x.values())
+    rhs = len(C) * SIZE_FACTOR
     m.addConstr(lhs <= rhs)
     t1 = time.time()
     print('             ... done writing budget constraint!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    print('         Started writing quality of service constraints ...')
+    print('         Started writing level of service constraints ...')
     C_dict = {ell: h for ell, h in C}
     for (s, t), var in m._u.items():
         lb = 0
@@ -85,7 +91,8 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
                 lb += 1 / C_dict[ell]
         for ell1, ell2 in T_st[(s, t)]:
             if ell1 in C_dict.keys() and ell2 in C_dict.keys():
-                lb += min(1 / C_dict[ell1], 1/C_dict[ell2])
+                if C_dict[ell1] <= TRANSFER_MIN_H or C_dict[ell2] <= TRANSFER_MIN_H:
+                    lb += min(1 / C_dict[ell1], 1 / C_dict[ell2])
         lb = min(1 / min(H), lb) * IC_FACTOR
         ub = 0
         for ell in L_st[(s, t)]:
@@ -95,58 +102,59 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
             ub += m._t[(ell1, ell2)]
         m.addConstr(lb <= var)
         m.addConstr(var <= ub)
-        m.addConstr(var <= m._y[(s, t)])
+        m.addConstr(var - 1 / max(H) <= m._y[(s, t)])
+        m.addConstr(m._y[(s, t)] <= 1 - 1 / max(H) + var)
     t1 = time.time()
-    print('             ... done writing quality of service constraints!')
+    print('             ... done writing level of service constraints!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    print('         Started writing coverage (strengthening) constraints ...')
-    for (s, t), var in m._y.items():
-        for ell in L_st[(s, t)]:
-            for h in H:
-                m.addConstr(m._x[(ell, h)] <= var)
-        for ell1, ell2 in T_st[(s, t)]:
-            m.addConstr(m._t[(ell1, ell2)] <= var)
-    t1 = time.time()
-    print('             ... done writing coverage (strengthening) constraints!')
-    print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
+    # print('         Started writing coverage (strengthening) constraints ...')
+    # for (s, t), var in m._y.items():
+    #     for ell in L_st[(s, t)]:
+    #         for h in H:
+    #             m.addConstr(m._x[(ell, h)] <= var)
+    #     for ell1, ell2 in T_st[(s, t)]:
+    #         m.addConstr(m._t[(ell1, ell2)] - 1 / max(H) <= var)
+    # t1 = time.time()
+    # print('             ... done writing coverage (strengthening) constraints!')
+    # print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
     print('         ... done writing constraints!')
     t1 = time.time()
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    print('     Started writing warm start ...')
+    print('     Started writing first warm start ...')
+    m.params.StartNumber = 0
     for (ell, h), var in m._x.items():
         if (ell, h) in C:
             var.Start = 1
         else:
             var.Start = 0
-    print('         ... done writing warm start!')
+    print('         ... done writing first warm start!')
     t1 = time.time()
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    ridership_obj = gp.quicksum(max(G.nodes[s]['rho'], G.nodes[t]['rho']) * var for (s, t), var in m._u.items())
+    ridership_obj = gp.quicksum((int(G.nodes[s]['rho']) * int(G.nodes[t]['rho'])) * var for (s, t), var in m._u.items())
     coverage_obj = gp.quicksum(m._y.values())
 
     print('     Started optimizing ... ')
 
     m.setObjective(ridership_obj)
-    m.Params.MIPFocus = MIP_FOCUS
-    m.optimize()
-    c_ridership = m.addConstr(ridership_obj >= (1 - REL_TOL) * m.ObjVal)
-    m.setObjective(coverage_obj)
-    m.Params.MIPFocus = 3
     m.optimize()
     P_u = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 
-    m.remove(c_ridership)
+    print('     Started writing second warm start ...')
+    m.params.StartNumber = 1
+    for (ell, h), var in m._x.items():
+        if (ell, h) in P_u:
+            var.Start = 1
+        else:
+            var.Start = 0
+    print('         ... done writing second warm start!')
+    t1 = time.time()
+    print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
     m.setObjective(coverage_obj)
-    m.Params.MIPFocus = MIP_FOCUS
-    m.optimize()
-    m.addConstr(coverage_obj >= (1 - REL_TOL) * m.ObjVal)
-    m.setObjective(ridership_obj)
-    m.Params.MIPFocus = 3
     m.optimize()
     P_y = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 

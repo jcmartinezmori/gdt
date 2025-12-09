@@ -7,6 +7,7 @@ import pickle
 import requests
 import src.solver
 from src.config import *
+np.random.seed(0)
 
 
 def graphs():
@@ -101,6 +102,8 @@ def candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists):
         if route_id not in R:
             R[route_id] = {}
         if direction_id not in R[route_id]:
+            R[route_id][direction_id] = tuple()
+        if len(tuple(stop_times_df[stop_times_df['trip_id'] == trip_id]['stop_id'])) > len(R[route_id][direction_id]):
             R[route_id][direction_id] = tuple(stop_times_df[stop_times_df['trip_id'] == trip_id]['stop_id'])
 
     for route_id in R.keys():
@@ -263,10 +266,25 @@ def load_instance(instance_filename):
 
     with open('./results/instances/W_{0}.pkl'.format(instance_filename), 'rb') as file:
         W = pickle.load(file)
-    with open('./results/instances/st_pairs_{0}.pkl'.format(instance_filename), 'rb') as file:
-        st_pairs = pickle.load(file)
+    st_pairs = __load_st_pairs(instance_filename)
     with open('./results/instances/dists_{0}.pkl'.format(instance_filename), 'rb') as file:
         dists = pickle.load(file)
+
+    L, L_st, C = __load_L_L_st_C(instance_filename)
+    T, T_st = __load_T_T_st(instance_filename)
+
+    return G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st
+
+
+def __load_st_pairs(instance_filename):
+
+    with open('./results/instances/st_pairs_{0}.pkl'.format(instance_filename), 'rb') as file:
+        st_pairs = pickle.load(file)
+
+    return st_pairs
+
+
+def __load_L_L_st_C(instance_filename):
 
     with open('./results/instances/L_{0}.pkl'.format(instance_filename), 'rb') as file:
         L = pickle.load(file)
@@ -275,10 +293,15 @@ def load_instance(instance_filename):
     with open('./results/instances/C_{0}.pkl'.format(instance_filename), 'rb') as file:
         C = pickle.load(file)
 
+    return L, L_st, C
+
+
+def __load_T_T_st(instance_filename):
+
     with open('./results/instances/T_{0}.pkl'.format(instance_filename), 'rb') as file:
         T = pickle.load(file)
     with open('./results/instances/T_st_{0}.pkl'.format(instance_filename), 'rb') as file:
         T_st = pickle.load(file)
 
-    return G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st
+    return T, T_st
 

@@ -95,95 +95,120 @@ def level_of_service(filename, solver_params):
     instance_filename = filename
     solution_filename = filename + '_' + solver_params
 
-    G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st = src.instance.load_instance(instance_filename)
+    st_pairs = src.instance.__load_st_pairs(instance_filename)
+    L, L_st, C = src.instance.__load_L_L_st_C(instance_filename)
+    T, T_st = src.instance.__load_T_T_st(instance_filename)
+
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
         P_u = pickle.load(file)
     with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
         P_y = pickle.load(file)
 
     C_dict = {ell: h for ell, h in C}
-    freq_C = {(s, t): 0 for s, t in st_pairs}
-    for ell, h in C_dict.items():
-        for s, t in it.combinations(L[ell]['walk_cover'], 2):
-            try:
-                freq_C[tuple(sorted((s, t)))] += 1/h
-            except KeyError:
-                continue
-    for (ell1, h1), (ell2, h2) in it.combinations(C_dict.items(), 2):
-        if h1 <= TRANSFER_MIN_H and h2 <= TRANSFER_MIN_H:
-            if tuple(sorted((ell1, ell2))) in T:
-                for s, t in T[tuple(sorted((ell1, ell2)))]['ell1_ell2_st_coverage']:
-                    freq_C[tuple(sorted((s, t)))] += 1/max(h1, h2)
-
     P_u_dict = {ell: h for ell, h in P_u}
-    freq_P_u = {(s, t): 0 for s, t in st_pairs}
-    for ell, h in P_u_dict.items():
-        for s, t in it.combinations(L[ell]['walk_cover'], 2):
-            try:
-                freq_P_u[tuple(sorted((s, t)))] += 1/h
-            except KeyError:
-                continue
-    for (ell1, h1), (ell2, h2) in it.combinations(P_u_dict.items(), 2):
-        if h1 <= TRANSFER_MIN_H and h2 <= TRANSFER_MIN_H:
-            if tuple(sorted((ell1, ell2))) in T:
-                for s, t in T[tuple(sorted((ell1, ell2)))]['ell1_ell2_st_coverage']:
-                    freq_P_u[tuple(sorted((s, t)))] += 1/max(h1, h2)
-
     P_y_dict = {ell: h for ell, h in P_y}
+
+    freq_C = {(s, t): 0 for s, t in st_pairs}
+    freq_P_u = {(s, t): 0 for s, t in st_pairs}
     freq_P_y = {(s, t): 0 for s, t in st_pairs}
-    for ell, h in P_y_dict.items():
-        for s, t in it.combinations(L[ell]['walk_cover'], 2):
-            try:
-                freq_P_y[tuple(sorted((s, t)))] += 1/h
-            except KeyError:
-                continue
-    for (ell1, h1), (ell2, h2) in it.combinations(P_y_dict.items(), 2):
-        if h1 <= TRANSFER_MIN_H and h2 <= TRANSFER_MIN_H:
-            if tuple(sorted((ell1, ell2))) in T:
-                for s, t in T[tuple(sorted((ell1, ell2)))]['ell1_ell2_st_coverage']:
-                    freq_P_y[tuple(sorted((s, t)))] += 1/max(h1, h2)
+    for s, t in st_pairs:
+        for ell in L_st[(s, t)]:
+            if ell in C_dict.keys():
+                freq_C[(s, t)] += 1/C_dict[ell]
+            if ell in P_u_dict.keys():
+                freq_P_u[(s, t)] += 1/P_u_dict[ell]
+            if ell in P_y_dict.keys():
+                freq_P_y[(s, t)] += 1/P_y_dict[ell]
 
     freq_df = pd.DataFrame([freq_C, freq_P_u, freq_P_y]).T
     freq_df.columns = ['Current Service Plan', 'Ridership Service Plan', 'Coverage Service Plan']
-
     fig = make_subplots(
-        rows=1, cols=1,
-        subplot_titles=('Distribution of Level of Service (with {0:.1f}-Incentive Compatibility)'.format(IC_FACTOR),)
+        rows=2, cols=1,
+        subplot_titles=(
+            'Distribution of Level of Service with No Transfers ({0:.1f}-Incentive Compatibility)'.format(IC_FACTOR),
+            'Distribution of Level of Service with One Transfer ({0:.1f}-Incentive Compatibility)'.format(IC_FACTOR)
+        ),
+        vertical_spacing=0.175
     )
 
-    for col in freq_df.columns:
+    colors = [HEXORANGE, HEXBLUE, HEXVERMILLION]
+    for i, col in enumerate(freq_df.columns):
         x = list(range(len(freq_df[col])))
         y = np.sort(freq_df[col].values)
         fig.add_trace(go.Scatter(
             x=x,
             y=y,
             mode='lines',
-            name=f"{col}"
-        ))
-
+            name=f"{col}",
+            line=dict(color=colors[i], width=2),
+            showlegend=True
+        ), row=1, col=1)
     fig.update_yaxes(
         row=1, col=1,
-        title_text=r'$\large \textrm{Effective Service Frequency}$',
-        title_font={'size': 18},
-        range=[0 - 0.025, 0.25 + 0.025]
+        title_text=r'$\large \textrm{Service Frequency } [\mathtt{min}^{-1}]$',
+        title_font={'size': 20},
+        range=[0 - 0.025, 0.6]
     )
     fig.update_xaxes(
         row=1, col=1,
-        title_text=r'$\large \textrm{Origin-Destination Pairs (sorted by Effective Service Frequency)}$',
-        title_font={'size': 18},
-        range=[0 - 0.025 * len(freq_df[col]), len(freq_df[col]) + 0.025 * len(freq_df[col])]
+        title_text=r'$\large \textrm{Origin-Destination Pairs (sorted by Service Frequency)}$',
+        title_font={'size': 20},
+        range=[125000, 200000]
     )
+
+    for s, t in st_pairs:
+        for ell1, ell2 in T_st[(s, t)]:
+            if ell1 in C_dict.keys() and ell2 in C_dict.keys():
+                if C_dict[ell1] <= TRANSFER_MIN_H or C_dict[ell2] <= TRANSFER_MIN_H:
+                    freq_C[(s, t)] += 1/max(C_dict[ell1], C_dict[ell2])
+            if ell1 in P_u_dict.keys() and ell2 in P_u_dict.keys():
+                if P_u_dict[ell1] <= TRANSFER_MIN_H or P_u_dict[ell2] <= TRANSFER_MIN_H:
+                    freq_P_u[(s, t)] += 1/max(P_u_dict[ell1], P_u_dict[ell2])
+            if ell1 in P_y_dict.keys() and ell2 in P_y_dict.keys():
+                if P_y_dict[ell1] <= TRANSFER_MIN_H or P_y_dict[ell2] <= TRANSFER_MIN_H:
+                    freq_P_y[(s, t)] += 1/max(P_y_dict[ell1], P_y_dict[ell2])
+
+    freq_df = pd.DataFrame([freq_C, freq_P_u, freq_P_y]).T
+    freq_df.columns = ['Current Service Plan', 'Ridership Service Plan', 'Coverage Service Plan']
+
+    for i, col in enumerate(freq_df.columns):
+        x = list(range(len(freq_df[col])))
+        y = np.sort(freq_df[col].values)
+        fig.add_trace(go.Scatter(
+            x=x,
+            y=y,
+            mode='lines',
+            name=f"{col}",
+            line=dict(color=colors[i], width=2),
+            showlegend=False
+        ), row=2, col=1)
+    fig.update_yaxes(
+        row=2, col=1,
+        title_text=r'$\large \textrm{Service Frequency } [\mathtt{min}^{-1}]$',
+        title_font={'size': 20},
+        range=[0 - 0.025, 0.6]
+    )
+    fig.update_xaxes(
+        row=2, col=1,
+        title_text=r'$\large \textrm{Origin-Destination Pairs (sorted by Service Frequency)}$',
+        title_font={'size': 20},
+        range=[125000, 200000]
+    )
+
     for annotation in fig['layout']['annotations']:
         annotation['font'] = {'size': 24}
-        annotation['y'] = 1.0125
+        # annotation['y'] = 1.0125
     fig.update_layout(
         legend={
             'orientation': 'v', 'entrywidth': 250, 'yanchor': 'top', 'y': 1-0.125/4, 'xanchor': 'left', 'x': 0.125/4,
-            'font': {'size': 18}
+            'font': {'size': 20}
         }
     )
-
-    fig.show()
+    fig.write_image(
+        './results/figures/los_{0}.pdf'.format(solution_filename),
+        width=1200, height=800
+    )
+    # fig.show()
 
 
 # async def convert_html_to_images(html_dir, pdf_dir):
@@ -218,5 +243,5 @@ def level_of_service(filename, solver_params):
 if __name__ == '__main__':
     filename = 'ITHACA'
     solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
-    maps(filename, solver_params)
+    # maps(filename, solver_params)
     level_of_service(filename, solver_params)
