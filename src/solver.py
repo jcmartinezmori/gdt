@@ -4,31 +4,31 @@ import time
 from src.config import *
 
 
-def walk_cover(U, stop_nodes=None):
-
-    m = gp.Model()
-    m._x = m.addVars(U.nodes(), vtype=gp.GRB.BINARY, name='x')
-
-    for s in U.nodes():
-        if stop_nodes is not None:
-            service_cover = nx.single_source_dijkstra_path_length(
-                U, s, weight='length', cutoff=SERVICE_COVER_FACTOR * WALK_DIST
-            )
-            if set(service_cover.keys()).isdisjoint(stop_nodes.values()):
-                continue
-        m.addConstr(gp.quicksum(m._x[t] for t in U.nodes[s]['walk_cover']) >= 1)
-    if stop_nodes is not None:
-        for stop_node in stop_nodes.values():
-            m.addConstr(m._x[stop_node] == 1)
-
-    obj = gp.quicksum(m._x.values())
-
-    m.setObjective(obj)
-    m.optimize()
-
-    W = {s for s, var in m._x.items() if var.X > 0}
-
-    return W
+# def walk_cover(U, stop_nodes=None):
+#
+#     m = gp.Model()
+#     m._x = m.addVars(U.nodes(), vtype=gp.GRB.BINARY, name='x')
+#
+#     for s in U.nodes():
+#         if stop_nodes is not None:
+#             service_cover = nx.single_source_dijkstra_path_length(
+#                 U, s, weight='length', cutoff=SERVICE_COVER_FACTOR * WALK_DIST
+#             )
+#             if set(service_cover.keys()).isdisjoint(stop_nodes.values()):
+#                 continue
+#         m.addConstr(gp.quicksum(m._x[t] for t in U.nodes[s]['walk_cover']) >= WALK_COVER_IS_STOPS)
+#     if stop_nodes is not None:
+#         for stop_node in stop_nodes.values():
+#             m.addConstr(m._x[stop_node] == 1)
+#
+#     obj = gp.quicksum(m._x.values())
+#
+#     m.setObjective(obj)
+#     m.optimize()
+#
+#     W = {s for s, var in m._x.items() if var.X > 0}
+#
+#     return W
 
 
 def service_plans(G, st_pairs, L, L_st, C, T, T_st):

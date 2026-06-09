@@ -14,80 +14,111 @@ import src.instance
 from src.config import *
 
 
-def maps(filename, solver_params):
+def instance_maps(filename):
 
     instance_filename = filename
-    solution_filename = filename + '_' + solver_params
 
-    G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st = src.instance.load_instance(instance_filename)
-    with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
-        P_u = pickle.load(file)
-    with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
-        P_y = pickle.load(file)
+    radius_factor = 2
+
+    G = src.instance.__load_G(instance_filename)
+    W = src.instance.__load_W(instance_filename)
+    L, L_st, C = src.instance.__load_L_L_st_C(instance_filename)
 
     # current service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
+        radius = radius_factor * (1 + np.log10(float(G.nodes[s]['rho'])))
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=2.5, weight=0,
+            location=(float(G.nodes[s]['lat']), float(G.nodes[s]['lon'])), color=HEXBLACK, radius=radius, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell, h in C:
-        ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
+        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=L[ell]['route_id']
+                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
         ).add_to(folium_map)
-    folium_map.save('./results/frames/html/current_service_plan_{0}.html'.format(solution_filename))
+    folium_map.save('./results/maps/html/current_service_plan_{0}.html'.format(instance_filename))
+
+    # amenities
+    folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
+    folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
+    for s in W:
+        radius = radius_factor * (1 + np.log10(int(G.nodes[s]['rho'])))
+        folium.CircleMarker(
+            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
+            fill=True, fill_opacity=1, tooltip=s
+        ).add_to(folium_map)
+    folium_map.save('./results/maps/html/amenities_{0}.html'.format(instance_filename))
 
     # candidate lines
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
+        radius = radius_factor * (1 + np.log10(int(G.nodes[s]['rho'])))
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=2.5, weight=0,
+            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell in L.keys():
         ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=4, opacity=1, tooltip=L[ell]['route_id']
+                ell_coords, color=HEXCOLOR, weight=4, opacity=1, tooltip='Line: {0}'.format(L[ell]['route_id'])
         ).add_to(folium_map)
-    folium_map.save('./results/frames/html/candidate_lines_{0}.html'.format(solution_filename))
+    folium_map.save('./results/maps/html/candidate_lines_{0}.html'.format(instance_filename))
+
+
+def solution_maps(filename, solver_params):
+
+    instance_filename = filename
+    solution_filename = filename + '_' + solver_params
+
+    radius_factor = 2
+
+    G = src.instance.__load_G(instance_filename)
+    W = src.instance.__load_W(instance_filename)
+    L, L_st, C = src.instance.__load_L_L_st_C(instance_filename)
+
+    with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
+        P_u = pickle.load(file)
+    with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
+        P_y = pickle.load(file)
 
     # ridership service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
+        radius = radius_factor * (1 + np.log10(int(G.nodes[s]['rho'])))
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=2.5, weight=0,
+            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell, h in P_u:
         ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=L[ell]['route_id']
+                ell_coords, color=HEXCOLOR, weight=4/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
         ).add_to(folium_map)
-    folium_map.save('./results/frames/html/ridership_service_plan_{0}.html'.format(solution_filename))
+    folium_map.save('./results/maps/html/ridership_service_plan_{0}.html'.format(solution_filename))
 
     # coverage service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
+        radius = 1.5*(1 + np.log10(int(G.nodes[s]['rho'])))
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=2.5, weight=0,
+            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell, h in P_y:
         ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip=L[ell]['route_id']
+                ell_coords, color=HEXCOLOR, weight=4/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
         ).add_to(folium_map)
-    folium_map.save('./results/frames/html/coverage_service_plan_{0}.html'.format(solution_filename))
+    folium_map.save('./results/maps/html/coverage_service_plan_{0}.html'.format(solution_filename))
 
 
 def level_of_service(filename, solver_params):
@@ -211,37 +242,39 @@ def level_of_service(filename, solver_params):
     # fig.show()
 
 
-# async def convert_html_to_images(html_dir, pdf_dir):
-#
-#     if os.path.exists(pdf_dir):
-#         shutil.rmtree(pdf_dir)
-#     os.makedirs(pdf_dir)
-#
-#     html_files = sorted(Path(html_dir).glob('*.html'), key=lambda f: f.stat().st_ctime)
-#
-#     async with async_playwright() as p:
-#
-#         browser = await p.chromium.launch()
-#         page = await browser.new_page()
-#
-#         for i, html_file in enumerate(html_files):
-#
-#             file_url = html_file.resolve().as_uri()
-#             pdf_out = Path(pdf_dir)/f'frame_{i:04d}.pdf'
-#
-#             await page.goto(file_url)
-#             await page.set_viewport_size({'width': 1920, 'height': 1080})
-#             await page.wait_for_load_state('networkidle')
-#             await page.pdf(path=pdf_out, width='1920', height='1080', print_background=False)
-#
-#         await browser.close()
-#
-# html_dir = './results/frames/html'
-# pdf_dir = './results/frames/pdf'
-# asyncio.run(convert_html_to_images(html_dir, pdf_dir))
+async def convert_html_to_images(html_dir, pdf_dir):
+
+    if os.path.exists(pdf_dir):
+        shutil.rmtree(pdf_dir)
+    os.makedirs(pdf_dir)
+
+    html_files = sorted(Path(html_dir).glob('*.html'), key=lambda f: f.stat().st_ctime)
+
+    async with async_playwright() as p:
+
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+
+        for i, html_file in enumerate(html_files):
+
+            file_url = html_file.resolve().as_uri()
+            pdf_out = Path(pdf_dir)/'{0}.pdf'.format(html_file.name.strip('./html'))
+
+            await page.goto(file_url)
+            await page.set_viewport_size({'width': 1920, 'height': 1080})
+            await page.wait_for_load_state('networkidle')
+            await page.pdf(path=pdf_out, width='1920', height='1080', print_background=False)
+
+        await browser.close()
+
 
 if __name__ == '__main__':
-    filename = 'ITHACA'
+    filename = 'DENVER'
     solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
-    # maps(filename, solver_params)
-    level_of_service(filename, solver_params)
+    instance_maps(filename)
+    # solution_maps(filename, solver_params)
+    # level_of_service(filename, solver_params)
+
+    html_dir = './results/maps/html'
+    pdf_dir = './results/maps/pdf'
+    asyncio.run(convert_html_to_images(html_dir, pdf_dir))

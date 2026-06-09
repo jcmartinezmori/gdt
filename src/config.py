@@ -2,34 +2,35 @@ import numpy as np
 
 # --- QUERY PARAMETERS --- #
 ADMIN_LEVEL = 6
-CENTER = (42.49036732282236, -76.46329087470093)
+CENTER = (39.74643047624631, -105.00249399677395)
 CUSTOM_FILTER = (
     '['
     '"highway"~'
     '"motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|residential"'
     ']'
 )
-PLACE = 'Tompkins County'
+PLACE = 'DENVER'
 RETAIN_ALL = False
-SIMPLIFY = False
-GTFS = 'tcat-ny-us'
-# TAGS = {'amenity': ['bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'ice_cream', 'pub', 'restaurant']}
-TAGS = {'amenity': True, 'shop': True, 'office': True}
+SIMPLIFY = True
+GTFS = 'rtd-co-us'
+TAGS = {'amenity': True, 'shop': True, 'office': True, 'building:levels': True}
 
 
 # --- MODEL PARAMETERS --- #
 COST_FACTOR = 1
 DETOUR_FACTOR = 2
 H = [5, 10, 15, 20, 30, 45, 60]
-IC_FACTOR = 1.0
+IC_FACTOR = 0.0
 OVERLAP_THRESHOLD = 1/4
-NO_RANDOM_LINES = 225
-SERVICE_COVER_FACTOR = 3
+NO_RANDOM_LINES = 0
 TRANSFER_MIN_H = 15
 SIZE_FACTOR = 1
 WALK_COVER_FACTOR = 2
-WALK_DIST = 500
+WALK_COVER_IS_STOPS = 0
+WALK_DIST = 400
 WALK_TRIP_FACTOR = 4
+RHO_CUTOFF = 25
+
 
 # --- SOLVER PARAMETERS --- #
 MIP_FOCUS = 1
@@ -47,6 +48,7 @@ HEXYELLOW = "#F0E442"
 HEXBLUE = "#0072B2"
 HEXVERMILLION = "#D55E00"
 HEXREDDISHPURPUPLE = "#CC79A7"
+HEXGRAY = "#999999"
 HEXCOLORS = [
     HEXBLUE,
     HEXYELLOW,
@@ -55,4 +57,5 @@ HEXCOLORS = [
     HEXORANGE,
     HEXBLUISHGREEN,
     HEXREDDISHPURPUPLE,
+    HEXGRAY
 ]

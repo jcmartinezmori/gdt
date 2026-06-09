@@ -1,70 +1,130 @@
 import osmnx as ox
+import geopandas as gpd
 import itertools as it
 import networkx as nx
 import numpy as np
 import pandas as pd
 import pickle
 import requests
+from shapely.geometry import Point, MultiPoint
 import src.solver
 from src.config import *
 np.random.seed(0)
 
 
-def graphs():
+def __from_polygon():
+
+    shapes_df = pd.read_csv('./data/{0}/shapes.txt'.format(GTFS), sep=',')
+    latlon_points = list(zip(shapes_df['shape_pt_lat'], shapes_df['shape_pt_lon']))
+
+    gdf = gpd.GeoDataFrame(
+        geometry=[Point(lon, lat) for lat, lon in latlon_points],
+        crs='EPSG:4326'
+    )
+    utm_crs = ox.projection.project_gdf(gdf).crs
+    gdf_proj = gdf.to_crs(utm_crs)
+    hull_proj = MultiPoint(list(gdf_proj.geometry)).convex_hull
+    hull_buffered_proj = hull_proj.buffer(WALK_TRIP_FACTOR * WALK_DIST)
+    polygon = gpd.GeoSeries([hull_buffered_proj], crs=utm_crs).to_crs("EPSG:4326").iloc[0]
+
+    return polygon
+
+
+def get_graphs(from_polygon=True):
 
     print('     Running graphs(*) ... ')
 
-    G = ox.graph_from_place(
-        PLACE,
-        network_type='drive',
-        simplify=SIMPLIFY,
-        retain_all=RETAIN_ALL,
-        custom_filter=CUSTOM_FILTER
-    )
+    if from_polygon:
+        polygon = __from_polygon()
+        G = ox.graph_from_polygon(
+            polygon,
+            network_type='drive',
+            simplify=SIMPLIFY,
+            retain_all=RETAIN_ALL,
+            custom_filter=CUSTOM_FILTER
+        )
+        features_df = ox.features_from_polygon(polygon, TAGS)
+    else:
+        G = ox.graph_from_place(
+            PLACE,
+            network_type='drive',
+            simplify=SIMPLIFY,
+            retain_all=RETAIN_ALL,
+            custom_filter=CUSTOM_FILTER
+        )
+        features_df = ox.features_from_place(PLACE, TAGS)
+
     G = nx.subgraph(G, max(nx.strongly_connected_components(G), key=len))
+
+    for _, data in G.nodes(data=True):
+        data['lon'] = data['x']
+        data['lat'] = data['y']
+    G = ox.projection.project_graph(G)
+
     U = G.to_undirected()
+
+    features_df = ox.projection.project_gdf(features_df)
+    features_df['building:levels'] = pd.to_numeric(features_df['building:levels'], errors='coerce').fillna(1)
 
     for s in U.nodes():
         U.nodes[s]['feature_ct'] = 0
         G.nodes[s]['feature_ct'] = U.nodes[s]['feature_ct']
 
-        U.nodes[s]['walk_cover'] = set(
-            nx.single_source_dijkstra_path_length(U, s, cutoff=WALK_COVER_FACTOR * WALK_DIST, weight='length').keys()
-        )
-        G.nodes[s]['walk_cover'] = U.nodes[s]['walk_cover']
-
-    features_df = ox.features_from_place(PLACE, TAGS)
-    for _, feature in features_df.iterrows():
-        s = ox.nearest_nodes(U, feature.geometry.centroid.x, feature.geometry.centroid.y)
-        U.nodes[s]['feature_ct'] += 1
+    for idx, s in enumerate(
+            ox.distance.nearest_nodes(U, features_df['geometry'].centroid.x, features_df['geometry'].centroid.y)
+    ):
+        U.nodes[s]['feature_ct'] += features_df.iloc[idx]['building:levels']
         G.nodes[s]['feature_ct'] = U.nodes[s]['feature_ct']
-
-    for s in U.nodes():
-        U.nodes[s]['rho'] = 1 + sum(U.nodes[t]['feature_ct'] for t in nx.single_source_dijkstra_path_length(
-            U, s, cutoff=WALK_DIST, weight='length').keys())
-        G.nodes[s]['rho'] = U.nodes[s]['rho']
 
     B = U.to_directed()
 
     return G, U, B
 
 
-def stop_nodes(U):
+def get_stop_nodes(U):
 
     print('     Running stop_nodes(*) ... ')
 
     stops_df = pd.read_csv('./data/{0}/stops.txt'.format(GTFS), delimiter=',').set_index('stop_id')
-    stops_df['node'] = stops_df.apply(lambda stop: ox.nearest_nodes(U, stop.stop_lon, stop.stop_lat), axis=1)
+
+    stops_gdf = gpd.GeoDataFrame(
+        stops_df,
+        geometry=gpd.points_from_xy(stops_df['stop_lon'], stops_df['stop_lat']),
+        crs='EPSG:4326'
+    )
+    stops_gdf_proj = stops_gdf.to_crs(U.graph['crs'])
+
+    stops_df['node'] = ox.distance.nearest_nodes(
+        U, stops_gdf_proj.geometry.centroid.x, stops_gdf_proj.geometry.centroid.y
+    )
     stop_nodes = stops_df['node'].to_dict()
 
     return stop_nodes
 
 
-def walk_cover_st_pairs_and_dists(U, stop_nodes=None):
+def get_rhos(U, stop_nodes):
+
+    rhos = {t: 0 for t in stop_nodes.values()}
+
+    for s in U.nodes():
+        neighborhood_distances = nx.single_source_dijkstra_path_length(
+            U, s, cutoff=WALK_TRIP_FACTOR * WALK_DIST, weight='length'
+        )
+        neighborhood_stops = [t for t in stop_nodes.values() if t in neighborhood_distances.keys()]
+        try:
+            t = min(neighborhood_stops, key=lambda t: neighborhood_distances[t])
+            rhos[t] += float(U.nodes[s]['feature_ct'])
+        except ValueError:
+            continue
+
+    return rhos
+
+
+def get_walk_cover_st_pairs_and_dists(U, rhos):
 
     print('     Running walk_cover_st_pairs_and_dists(*) ... ')
 
-    W = src.solver.walk_cover(U, stop_nodes=stop_nodes)
+    W = {s for s, rho in rhos.items() if rho >= RHO_CUTOFF}
 
     walk_trips = dict()
     for s in W:
@@ -87,7 +147,7 @@ def walk_cover_st_pairs_and_dists(U, stop_nodes=None):
     return W, st_pairs, dists
 
 
-def candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists):
+def get_candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists):
 
     print('     Running candidate_lines(*) ... ')
 
@@ -112,14 +172,20 @@ def candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists):
         for ell_direction_stop_seq in R[route_id].values():
             ell_stop_seq.extend(ell_direction_stop_seq)
         ell_stop_seq = [stop_nodes[stop] for stop in ell_stop_seq]
-        ell_stops = set(ell_stop_seq).intersection(W)
-        ell_length = 0
+        if len(R[route_id].values()) == 1 and ell_stop_seq[0] != ell_stop_seq[-1]:
+            ell_stop_seq.extend(ell_stop_seq[::-1])
+
         ell_path = []
         for stop1, stop2 in zip(ell_stop_seq[:-1], ell_stop_seq[1:]):
-            ell_seg_length, ell_seg_path = nx.single_source_dijkstra(G, stop1, stop2, weight='length')
-            ell_length += ell_seg_length
+            _, ell_seg_path = nx.single_source_dijkstra(G, stop1, stop2, weight='length')
             ell_path.extend(ell_seg_path[:-1])
         ell_path.append(ell_stop_seq[-1])
+
+        P = G.subgraph(set(ell_path)).copy()
+        P = nx.subgraph(P, max(nx.strongly_connected_components(P), key=len))
+        ell_length = sum(data['length'] for _, _, data in P.edges(data=True))
+        ell_stops = set(P.nodes()).intersection(ell_stop_seq)
+
         ell_walk = set(nx.multi_source_dijkstra_path_length(U, ell_stops, weight='length', cutoff=WALK_DIST).keys())
         ell_walk_cover = ell_walk.intersection(W)
 
@@ -132,7 +198,7 @@ def candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists):
             'walk_cover': ell_walk_cover
         }
 
-        P = nx.compose(G.subgraph(set(ell_path)).copy(), B.subgraph(set(ell_walk)).copy())
+        P = nx.compose(P, B.subgraph(set(ell_walk)).copy())
         P_dists = {
             s: {t: length for t, length in
                 nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
@@ -209,7 +275,7 @@ def candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists):
     return L, L_st, C
 
 
-def candidate_transfers(G, B, W, st_pairs, dists, L, L_st):
+def get_candidate_transfers(G, B, W, st_pairs, dists, L, L_st):
 
     print('     Running candidate_transfers(*) ... ')
 
@@ -257,15 +323,14 @@ def candidate_transfers(G, B, W, st_pairs, dists, L, L_st):
 
 def load_instance(instance_filename):
 
-    G = ox.load_graphml('./results/instances/G_{0}.graphml'.format(instance_filename))
-    U = ox.load_graphml('./results/instances/U_{0}.graphml'.format(instance_filename))
-    B = ox.load_graphml('./results/instances/B_{0}.graphml'.format(instance_filename))
+    G = __load_G(instance_filename)
+    U = __load_U(instance_filename)
+    B = __load_B(instance_filename)
 
     with open('./results/instances/stop_nodes_{0}.pkl'.format(instance_filename), 'rb') as file:
         stop_nodes = pickle.load(file)
 
-    with open('./results/instances/W_{0}.pkl'.format(instance_filename), 'rb') as file:
-        W = pickle.load(file)
+    W = __load_W(instance_filename)
     st_pairs = __load_st_pairs(instance_filename)
     with open('./results/instances/dists_{0}.pkl'.format(instance_filename), 'rb') as file:
         dists = pickle.load(file)
@@ -274,6 +339,35 @@ def load_instance(instance_filename):
     T, T_st = __load_T_T_st(instance_filename)
 
     return G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st
+
+
+def __load_G(instance_filename):
+
+    G = ox.load_graphml('./results/instances/G_{0}.graphml'.format(instance_filename))
+
+    return G
+
+
+def __load_U(instance_filename):
+
+    U = ox.load_graphml('./results/instances/U_{0}.graphml'.format(instance_filename))
+
+    return U
+
+
+def __load_B(instance_filename):
+
+    B = ox.load_graphml('./results/instances/B_{0}.graphml'.format(instance_filename))
+
+    return B
+
+
+def __load_W(instance_filename):
+
+    with open('./results/instances/W_{0}.pkl'.format(instance_filename), 'rb') as file:
+        W = pickle.load(file)
+
+    return W
 
 
 def __load_st_pairs(instance_filename):
