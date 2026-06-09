@@ -12,7 +12,7 @@ def main(solver_params, load=False):
 
     if load:
 
-        G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st = src.instance.load_instance(instance_filename)
+        G, U, B, stop_nodes, rhos, W, st_pairs, dists, L, L_st, C, T, T_st = src.instance.load_instance(instance_filename)
 
     else:
 
@@ -26,10 +26,10 @@ def main(solver_params, load=False):
             pickle.dump(stop_nodes, file)
 
         rhos = src.instance.get_rhos(U, stop_nodes)
-        with open('./results/instances/rhos{0}.pkl'.format(instance_filename), 'wb') as file:
+        with open('./results/instances/rhos_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(rhos, file)
 
-        W, st_pairs, dists = src.instance.get_walk_cover_st_pairs_and_dists(U, rhos)
+        W, st_pairs, dists = src.instance.get_W_st_pairs_dists(U, rhos)
         with open('./results/instances/W_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(W, file)
         with open('./results/instances/st_pairs_{0}.pkl'.format(instance_filename), 'wb') as file:
@@ -37,13 +37,17 @@ def main(solver_params, load=False):
         with open('./results/instances/dists_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(dists, file)
 
-        L, L_st, C = src.instance.get_candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists)
+        C = src.instance.get_C(G, stop_nodes)
+        with open('./results/instances/C_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(C, file)
+
+        L, L_st = src.instance.get_L_L_st(G, B, W, st_pairs, dists, C)
         with open('./results/instances/L_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(L, file)
         with open('./results/instances/L_st_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(L_st, file)
-        with open('./results/instances/C_{0}.pkl'.format(instance_filename), 'wb') as file:
-            pickle.dump(C, file)
+
+        1 + '1'
 
         T, T_st = src.instance.get_candidate_transfers(G, B, W, st_pairs, dists, L, L_st)
         with open('./results/instances/T_{0}.pkl'.format(instance_filename), 'wb') as file:

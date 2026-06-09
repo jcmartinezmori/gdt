@@ -9,8 +9,8 @@ stop_times_df = pd.read_csv('./data/{0}/stop_times.txt'.format(GTFS), delimiter=
 trips_df = trips_df[trips_df['service_id'] == 'WK']
 stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(trips_df['trip_id'])]
 
-parent_stations = stops_df.dropna(subset=['parent_station']).set_index('stop_id')['parent_station']
-stop_times_df['stop_id'] = stop_times_df['stop_id'].map(parent_stations).fillna(stop_times_df['stop_id'])
+# parent_stations = stops_df.dropna(subset=['parent_station']).set_index('stop_id')['parent_station']
+# stop_times_df['stop_id'] = stop_times_df['stop_id'].map(parent_stations).fillna(stop_times_df['stop_id'])
 
 stop_times_df['departure_time'] = pd.to_timedelta(stop_times_df['departure_time'])
 

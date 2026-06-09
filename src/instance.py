@@ -32,7 +32,7 @@ def __from_polygon():
 
 def get_graphs(from_polygon=True):
 
-    print('     Running graphs(*) ... ')
+    print('     Running get_graphs(*) ... ')
 
     if from_polygon:
         polygon = __from_polygon()
@@ -83,7 +83,7 @@ def get_graphs(from_polygon=True):
 
 def get_stop_nodes(U):
 
-    print('     Running stop_nodes(*) ... ')
+    print('     Running get_stop_nodes(*) ... ')
 
     stops_df = pd.read_csv('./data/{0}/stops.txt'.format(GTFS), delimiter=',').set_index('stop_id')
 
@@ -104,6 +104,8 @@ def get_stop_nodes(U):
 
 def get_rhos(U, stop_nodes):
 
+    print('     Running get_rhos(*) ... ')
+
     rhos = {t: 0 for t in stop_nodes.values()}
 
     for s in U.nodes():
@@ -120,9 +122,9 @@ def get_rhos(U, stop_nodes):
     return rhos
 
 
-def get_walk_cover_st_pairs_and_dists(U, rhos):
+def get_W_st_pairs_dists(U, rhos):
 
-    print('     Running walk_cover_st_pairs_and_dists(*) ... ')
+    print('     Running get_W_st_pairs_dists(*) ... ')
 
     W = {s for s, rho in rhos.items() if rho >= RHO_CUTOFF}
 
@@ -147,132 +149,115 @@ def get_walk_cover_st_pairs_and_dists(U, rhos):
     return W, st_pairs, dists
 
 
-def get_candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists):
+def get_C(G, stop_nodes):
 
-    print('     Running candidate_lines(*) ... ')
+    print('     Running get_C(*) ... ')
 
+    routes_df = pd.read_csv('./data/{0}/routes.txt'.format(GTFS), delimiter=',')
     trips_df = pd.read_csv('./data/{0}/trips.txt'.format(GTFS), delimiter=',')
     stop_times_df = pd.read_csv('./data/{0}/stop_times.txt'.format(GTFS), delimiter=',')
 
-    R = dict()
-    L, L_st, ell = dict(), {(s, t): set() for s, t in st_pairs}, 0
-    C = set()
+    trips_df = trips_df[trips_df['service_id'] == 'WK']
+    stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(trips_df['trip_id'])]
 
-    for (route_id, trip_id, direction_id), trip_df in trips_df.groupby(['route_id', 'trip_id', 'direction_id']):
-        if route_id not in R:
-            R[route_id] = {}
-        if direction_id not in R[route_id]:
-            R[route_id][direction_id] = tuple()
-        if len(tuple(stop_times_df[stop_times_df['trip_id'] == trip_id]['stop_id'])) > len(R[route_id][direction_id]):
-            R[route_id][direction_id] = tuple(stop_times_df[stop_times_df['trip_id'] == trip_id]['stop_id'])
+    stop_times_df['departure_time'] = pd.to_timedelta(stop_times_df['departure_time'])
 
-    for route_id in R.keys():
+    headways = {route_id: {0: [], 1: []} for route_id in routes_df['route_id']}
+    stop_id_sequences = {route_id: {0: [], 1: []} for route_id in routes_df['route_id']}
 
-        ell_stop_seq = []
-        for ell_direction_stop_seq in R[route_id].values():
-            ell_stop_seq.extend(ell_direction_stop_seq)
-        ell_stop_seq = [stop_nodes[stop] for stop in ell_stop_seq]
-        if len(R[route_id].values()) == 1 and ell_stop_seq[0] != ell_stop_seq[-1]:
-            ell_stop_seq.extend(ell_stop_seq[::-1])
+    for (route_id, direction_id), route_direction_trips_df in trips_df.groupby(['route_id', 'direction_id']):
 
-        ell_path = []
-        for stop1, stop2 in zip(ell_stop_seq[:-1], ell_stop_seq[1:]):
-            _, ell_seg_path = nx.single_source_dijkstra(G, stop1, stop2, weight='length')
-            ell_path.extend(ell_seg_path[:-1])
-        ell_path.append(ell_stop_seq[-1])
+        route_direction_stop_times_df = stop_times_df[
+            stop_times_df['trip_id'].isin(route_direction_trips_df['trip_id'])
+        ]
 
-        P = G.subgraph(set(ell_path)).copy()
-        P = nx.subgraph(P, max(nx.strongly_connected_components(P), key=len))
-        ell_length = sum(data['length'] for _, _, data in P.edges(data=True))
-        ell_stops = set(P.nodes()).intersection(ell_stop_seq)
+        outlier_stop_ids = set()
+        for stop_id, route_direction_stop_id_stop_times_df in route_direction_stop_times_df.groupby('stop_id'):
+            if route_direction_stop_id_stop_times_df.shape[0] <= 2:
+                outlier_stop_ids.add(stop_id)
+            else:
+                dt1 = route_direction_stop_id_stop_times_df.sort_values('departure_time')['departure_time'].shift(-1)
+                dt2 = route_direction_stop_id_stop_times_df.sort_values('departure_time')['departure_time']
+                diff = dt1 - dt2
+                diff = diff.dt.total_seconds() / 60
+                headways[route_id][direction_id].extend(diff[:-1])
 
-        ell_walk = set(nx.multi_source_dijkstra_path_length(U, ell_stops, weight='length', cutoff=WALK_DIST).keys())
-        ell_walk_cover = ell_walk.intersection(W)
+        if headways[route_id][direction_id]:
+            headways[route_id][direction_id] = min(
+                H, key=lambda h: abs(h - np.median(headways[route_id][direction_id]))
+            )
 
-        L[ell] = {
-            'route_id': route_id,
-            'stops': ell_stops,
-            'length': ell_length,
-            'path': ell_path,
-            'walk': ell_walk,
-            'walk_cover': ell_walk_cover
-        }
+        for trip_id, route_direction_trip_stop_times_df in route_direction_stop_times_df.groupby('trip_id'):
+            stop_id_sequence = route_direction_trip_stop_times_df.sort_values(by='stop_sequence')['stop_id'].tolist()
+            if not outlier_stop_ids.isdisjoint(stop_id_sequence):
+                continue
+            else:
+                if len(stop_id_sequence) >= len(stop_id_sequences[route_id][direction_id]):
+                    stop_id_sequences[route_id][direction_id] = stop_id_sequence
 
-        P = nx.compose(P, B.subgraph(set(ell_walk)).copy())
-        P_dists = {
-            s: {t: length for t, length in
-                nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
-            for s in W.intersection(P.nodes())
-        }
-        for s, t in st_pairs:
-            if {s, t}.issubset(ell_walk_cover):
-                if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
-                    if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
-                        L_st[(s, t)].add(ell)
+    C = {}
+    for ell, route_id in enumerate(routes_df['route_id']):
+        if (
+                headways[route_id][0] and
+                headways[route_id][1] and
+                stop_id_sequences[route_id][0] and
+                stop_id_sequences[route_id][1]
+        ):
+            C[ell] = dict()
+            C[ell]['route_id'] = route_id
+            C[ell]['headway'] = max(headways[route_id][0], headways[route_id][1])
+            C[ell]['stop_id_sequence'] = stop_id_sequences[route_id][0] + stop_id_sequences[route_id][1]
+            C[ell]['stop_node_sequence'] = [stop_nodes[s] for s in C[ell]['stop_id_sequence']]
+            if C[ell]['stop_node_sequence'][-1] != C[ell]['stop_node_sequence'][0]:
+                C[ell]['stop_id_sequence'].append(C[ell]['stop_id_sequence'][0])
+                C[ell]['stop_node_sequence'].append(C[ell]['stop_node_sequence'][0])
 
-        ell += 1
-        print('         line count: {0}'.format(len(L)))
+            length = 0
+            path_nodes = []
+            for stop1, stop2 in zip(C[ell]['stop_node_sequence'][:-1], C[ell]['stop_node_sequence'][1:]):
+                seg_length, seg_path_nodes = nx.single_source_dijkstra(G, stop1, stop2, weight='length')
+                length += seg_length
+                path_nodes.extend(seg_path_nodes[:-1])
+            length += G.edges[path_nodes[-1], seg_path_nodes[-1], 0]['length']
+            path_nodes.append(seg_path_nodes[-1])
+
+            C[ell]['length'] = length
+            C[ell]['path_nodes'] = path_nodes
+
+    return C
+
+
+def get_L_L_st(G, B, W, st_pairs, dists, C):
+
+    print('     Running get_L_L_st(*) ... ')
+
+    L = C.copy()
+    L_st = {(s, t): set() for s, t in st_pairs}
 
     for ell in L.keys():
 
-        ell_trips_df = trips_df[trips_df['route_id'] == L[ell]['route_id']]
-        ell_stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(ell_trips_df['trip_id'])]
-        ell_headways = []
-        for _, ell_stop_times in ell_stop_times_df.groupby('stop_id'):
-            ell_stop_arrival_times = pd.to_timedelta(
-                ell_stop_times['arrival_time']
-            ).drop_duplicates(keep='first').sort_values()
-            ell_stop_headways = ell_stop_arrival_times.diff().dt.total_seconds().div(60).iloc[1:]
-            ell_headways.extend(ell_stop_headways.to_list())
-        h = min(H, key=lambda h: abs(h - np.mean(ell_headways)))
+        ell_path_nodes = set(L[ell]['path_nodes'])
+        ell_walk_nodes = set(
+            nx.multi_source_dijkstra_path_length(
+                B, set(L[ell]['stop_node_sequence']), weight='length', cutoff=WALK_COVER_FACTOR * WALK_DIST
+            ).keys()
+        )
 
-        C.add((ell, h))
+        P = nx.compose(G.subgraph(ell_path_nodes).copy(), B.subgraph(set(ell_walk_nodes)).copy())
 
-    ell = len(L)
-    for idx in range(NO_RANDOM_LINES):
-
-        route_id = 'RANDOM-{0}'.format(idx)
-        p, q = np.random.choice(list(W), size=2, replace=False)
-
-        p_q_length, p_q_path = nx.single_source_dijkstra(G, source=p, target=q, weight='length')
-        q_p_length, q_p_path = nx.single_source_dijkstra(G, source=q, target=p, weight='length')
-
-        p_q_stops = set(p_q_path).intersection(W)  # could also be .intersection(stops)
-        p_q_walk = set(nx.multi_source_dijkstra_path_length(U, p_q_stops, weight='length', cutoff=WALK_DIST).keys())
-        q_p_stops = set(q_p_path).intersection(W)  # could also be .intersection(stops)
-        q_p_walk = set(nx.multi_source_dijkstra_path_length(U, q_p_stops, weight='length', cutoff=WALK_DIST).keys())
-
-        ell_stops = p_q_stops.union(q_p_stops)
-        ell_length = p_q_length + q_p_length
-        ell_path = p_q_path + q_p_path[1:]
-        ell_walk = p_q_walk.union(q_p_walk)
-        ell_walk_cover = ell_walk.intersection(W)
-
-        L[ell] = {
-            'route_id': route_id,
-            'stops': ell_stops,
-            'length': ell_length,
-            'path': ell_path,
-            'walk': ell_walk,
-            'walk_cover': ell_walk_cover,
-        }
-
-        P = nx.compose(G.subgraph(set(ell_path)).copy(), B.subgraph(set(ell_walk)).copy())
         P_dists = {
             s: {t: length for t, length in
                 nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
             for s in W.intersection(P.nodes())
         }
+
         for s, t in st_pairs:
-            if {s, t}.issubset(ell_walk_cover):
+            if {s, t}.issubset(P.nodes()):
                 if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
                     if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
                         L_st[(s, t)].add(ell)
 
-        ell += 1
-        print('         line count: {0}'.format(len(L)))
-
-    return L, L_st, C
+    return L, L_st
 
 
 def get_candidate_transfers(G, B, W, st_pairs, dists, L, L_st):
@@ -330,6 +315,9 @@ def load_instance(instance_filename):
     with open('./results/instances/stop_nodes_{0}.pkl'.format(instance_filename), 'rb') as file:
         stop_nodes = pickle.load(file)
 
+    with open('./results/instances/rhos_{0}.pkl'.format(instance_filename), 'rb') as file:
+        rhos = pickle.load(file)
+
     W = __load_W(instance_filename)
     st_pairs = __load_st_pairs(instance_filename)
     with open('./results/instances/dists_{0}.pkl'.format(instance_filename), 'rb') as file:
@@ -338,7 +326,7 @@ def load_instance(instance_filename):
     L, L_st, C = __load_L_L_st_C(instance_filename)
     T, T_st = __load_T_T_st(instance_filename)
 
-    return G, U, B, stop_nodes, W, st_pairs, dists, L, L_st, C, T, T_st
+    return G, U, B, stop_nodes, rhos, W, st_pairs, dists, L, L_st, C, T, T_st
 
 
 def __load_G(instance_filename):
@@ -398,4 +386,134 @@ def __load_T_T_st(instance_filename):
         T_st = pickle.load(file)
 
     return T, T_st
+
+
+# def get_candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists):
+#
+#     print('     Running candidate_lines(*) ... ')
+#
+#     routes_df = pd.read_csv('./data/{0}/routes.txt'.format(GTFS), delimiter=',')
+#     trips_df = pd.read_csv('./data/{0}/trips.txt'.format(GTFS), delimiter=',')
+#     stops_df = pd.read_csv('./data/{0}/stops.txt'.format(GTFS), delimiter=',')
+#     stop_times_df = pd.read_csv('./data/{0}/stop_times.txt'.format(GTFS), delimiter=',')
+#
+#     R = dict()
+#     L, L_st, ell = dict(), {(s, t): set() for s, t in st_pairs}, 0
+#     C = set()
+#
+#     for (route_id, trip_id, direction_id), trip_df in trips_df.groupby(['route_id', 'trip_id', 'direction_id']):
+#         if route_id not in R:
+#             R[route_id] = {}
+#         if direction_id not in R[route_id]:
+#             R[route_id][direction_id] = tuple()
+#         if len(tuple(stop_times_df[stop_times_df['trip_id'] == trip_id]['stop_id'])) > len(R[route_id][direction_id]):
+#             R[route_id][direction_id] = tuple(stop_times_df[stop_times_df['trip_id'] == trip_id]['stop_id'])
+#
+#     for route_id in R.keys():
+#
+#         ell_stop_seq = []
+#         for ell_direction_stop_seq in R[route_id].values():
+#             ell_stop_seq.extend(ell_direction_stop_seq)
+#         ell_stop_seq = [stop_nodes[stop] for stop in ell_stop_seq]
+#         if len(R[route_id].values()) == 1 and ell_stop_seq[0] != ell_stop_seq[-1]:
+#             ell_stop_seq.extend(ell_stop_seq[::-1])
+#
+#         ell_path = []
+#         for stop1, stop2 in zip(ell_stop_seq[:-1], ell_stop_seq[1:]):
+#             _, ell_seg_path = nx.single_source_dijkstra(G, stop1, stop2, weight='length')
+#             ell_path.extend(ell_seg_path[:-1])
+#         ell_path.append(ell_stop_seq[-1])
+#
+#         P = G.subgraph(set(ell_path)).copy()
+#         P = nx.subgraph(P, max(nx.strongly_connected_components(P), key=len))
+#         ell_length = sum(data['length'] for _, _, data in P.edges(data=True))
+#         ell_stops = set(P.nodes()).intersection(ell_stop_seq)
+#
+#         ell_walk = set(nx.multi_source_dijkstra_path_length(U, ell_stops, weight='length', cutoff=WALK_DIST).keys())
+#         ell_walk_cover = ell_walk.intersection(W)
+#
+#         L[ell] = {
+#             'route_id': route_id,
+#             'stops': ell_stops,
+#             'length': ell_length,
+#             'path': ell_path,
+#             'walk': ell_walk,
+#             'walk_cover': ell_walk_cover
+#         }
+#
+#         P = nx.compose(P, B.subgraph(set(ell_walk)).copy())
+#         P_dists = {
+#             s: {t: length for t, length in
+#                 nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
+#             for s in W.intersection(P.nodes())
+#         }
+#         for s, t in st_pairs:
+#             if {s, t}.issubset(ell_walk_cover):
+#                 if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
+#                     if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
+#                         L_st[(s, t)].add(ell)
+#
+#         ell += 1
+#         print('         line count: {0}'.format(len(L)))
+#
+#     for ell in L.keys():
+#
+#         ell_trips_df = trips_df[trips_df['route_id'] == L[ell]['route_id']]
+#         ell_stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(ell_trips_df['trip_id'])]
+#         ell_headways = []
+#         for _, ell_stop_times in ell_stop_times_df.groupby('stop_id'):
+#             ell_stop_arrival_times = pd.to_timedelta(
+#                 ell_stop_times['arrival_time']
+#             ).drop_duplicates(keep='first').sort_values()
+#             ell_stop_headways = ell_stop_arrival_times.diff().dt.total_seconds().div(60).iloc[1:]
+#             ell_headways.extend(ell_stop_headways.to_list())
+#         h = min(H, key=lambda h: abs(h - np.mean(ell_headways)))
+#
+#         C.add((ell, h))
+#
+#     ell = len(L)
+#     for idx in range(NO_RANDOM_LINES):
+#
+#         route_id = 'RANDOM-{0}'.format(idx)
+#         p, q = np.random.choice(list(W), size=2, replace=False)
+#
+#         p_q_length, p_q_path = nx.single_source_dijkstra(G, source=p, target=q, weight='length')
+#         q_p_length, q_p_path = nx.single_source_dijkstra(G, source=q, target=p, weight='length')
+#
+#         p_q_stops = set(p_q_path).intersection(W)  # could also be .intersection(stops)
+#         p_q_walk = set(nx.multi_source_dijkstra_path_length(U, p_q_stops, weight='length', cutoff=WALK_DIST).keys())
+#         q_p_stops = set(q_p_path).intersection(W)  # could also be .intersection(stops)
+#         q_p_walk = set(nx.multi_source_dijkstra_path_length(U, q_p_stops, weight='length', cutoff=WALK_DIST).keys())
+#
+#         ell_stops = p_q_stops.union(q_p_stops)
+#         ell_length = p_q_length + q_p_length
+#         ell_path = p_q_path + q_p_path[1:]
+#         ell_walk = p_q_walk.union(q_p_walk)
+#         ell_walk_cover = ell_walk.intersection(W)
+#
+#         L[ell] = {
+#             'route_id': route_id,
+#             'stops': ell_stops,
+#             'length': ell_length,
+#             'path': ell_path,
+#             'walk': ell_walk,
+#             'walk_cover': ell_walk_cover,
+#         }
+#
+#         P = nx.compose(G.subgraph(set(ell_path)).copy(), B.subgraph(set(ell_walk)).copy())
+#         P_dists = {
+#             s: {t: length for t, length in
+#                 nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
+#             for s in W.intersection(P.nodes())
+#         }
+#         for s, t in st_pairs:
+#             if {s, t}.issubset(ell_walk_cover):
+#                 if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
+#                     if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
+#                         L_st[(s, t)].add(ell)
+#
+#         ell += 1
+#         print('         line count: {0}'.format(len(L)))
+#
+#     return L, L_st, C
 
