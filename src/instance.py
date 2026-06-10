@@ -271,7 +271,7 @@ def get_C(G, stop_nodes_dict, W):
     return C
 
 
-def get_L_L_st(G, B, W, st_pairs, dists, C):
+def get_L_L_st(G, B, W, st_pairs, times, C):
 
     print('     Running get_L_L_st(*) ... ')
 
@@ -393,6 +393,8 @@ def load_instance(instance_filename):
 def __load_G(instance_filename):
 
     G = ox.load_graphml('./results/instances/G_{0}.graphml'.format(instance_filename))
+    for _, _, data in G.edges(data=True):
+        data['time'] = float(data['time'])
 
     return G
 
@@ -400,6 +402,8 @@ def __load_G(instance_filename):
 def __load_U(instance_filename):
 
     U = ox.load_graphml('./results/instances/U_{0}.graphml'.format(instance_filename))
+    for _, _, data in U.edges(data=True):
+        data['time'] = float(data['time'])
 
     return U
 
@@ -407,6 +411,8 @@ def __load_U(instance_filename):
 def __load_B(instance_filename):
 
     B = ox.load_graphml('./results/instances/B_{0}.graphml'.format(instance_filename))
+    for _, _, data in B.edges(data=True):
+        data['time'] = float(data['time'])
 
     return B
 

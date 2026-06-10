@@ -52,14 +52,12 @@ def main(solver_params, load=False):
         #     pickle.dump(C, file)
         C = src.instance.__load_C(PLACE)
 
-        1 + ''
-
-        L, L_st = src.instance.get_L_L_st(G, B, W, st_pairs, times, C)
-        with open('./results/instances/L_{0}.pkl'.format(PLACE), 'wb') as file:
-            pickle.dump(L, file)
-        with open('./results/instances/L_st_{0}.pkl'.format(PLACE), 'wb') as file:
-            pickle.dump(L_st, file)
-        # L, L_st = src.instance.__load_L_L_st(PLACE)
+        # L, L_st = src.instance.get_L_L_st(G, B, W, st_pairs, times, C)
+        # with open('./results/instances/L_{0}.pkl'.format(PLACE), 'wb') as file:
+        #     pickle.dump(L, file)
+        # with open('./results/instances/L_st_{0}.pkl'.format(PLACE), 'wb') as file:
+        #     pickle.dump(L_st, file)
+        L, L_st = src.instance.__load_L_L_st(PLACE)
 
 
         # T_st = src.instance.get_T_st(G, B, W, st_pairs, dists, L)

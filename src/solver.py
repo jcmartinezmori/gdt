@@ -138,7 +138,7 @@ def service_plans(G, st_pairs, L, L_st, C, T, T_st):
     return P_u, P_y
 
 
-def service_plans_no_transfers(G, rhos, st_pairs, L, L_st, C):
+def service_plans_no_transfers(G, T, rhos, st_pairs, L, L_st, C):
 
     t0 = time.time()
 
@@ -150,11 +150,10 @@ def service_plans_no_transfers(G, rhos, st_pairs, L, L_st, C):
 
     print('     Started writing variables ... ')
     m._x = m.addVars(((ell, h) for ell in L.keys() for h in H), vtype=gp.GRB.BINARY, name='x')
-    m._y, m._u, m._z = dict(), dict(), dict()
+    m._y, m._u = dict(), dict()
     for s, t in st_pairs:
         m._y[(s, t)] = m.addVar(vtype=gp.GRB.BINARY, name='y')
         m._u[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1 / min(H), name='u')
-        m._z[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1 / min(H), name='z')
     t1 = time.time()
     print('         ... done writing variables!')
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
@@ -170,8 +169,8 @@ def service_plans_no_transfers(G, rhos, st_pairs, L, L_st, C):
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
     print('         Started writing budget constraints ...')
-    lhs = gp.quicksum(L[ell]['length'] / h * var for (ell, h), var in m._x.items())
-    rhs = sum(C[ell]['length'] / C[ell]['headway'] for ell in C.keys()) * COST_FACTOR
+    lhs = gp.quicksum(L[ell]['time'] / h * var for (ell, h), var in m._x.items())
+    rhs = sum(C[ell]['time'] / C[ell]['headway'] for ell in C.keys()) * COST_FACTOR
     m.addConstr(lhs <= rhs)
     lhs = gp.quicksum(m._x.values())
     rhs = len(C) * SIZE_FACTOR
@@ -216,6 +215,7 @@ def service_plans_no_transfers(G, rhos, st_pairs, L, L_st, C):
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
     ridership_obj = gp.quicksum((int(rhos[s]) * int(rhos[t])) * var for (s, t), var in m._u.items())
+    ridership_obj = gp.quicksum((int(rhos[s]) * int(rhos[t])) * var for (s, t), var in m._z.items())
     coverage_obj = gp.quicksum(m._y.values())
 
     print('     Started optimizing ... ')
