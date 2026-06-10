@@ -29,7 +29,14 @@ WALK_COVER_FACTOR = 2
 WALK_COVER_IS_STOPS = 0
 WALK_DIST = 400
 WALK_TRIP_FACTOR = 4
-RHO_CUTOFF = 12
+RHO_CUTOFF = 5
+W_CUTOFF = 1
+T_CUTOFF = 3
+SPEED = {
+    'sidewalk': 5,
+    'street': 50,
+    'highway': 100
+}
 
 
 # --- SOLVER PARAMETERS --- #

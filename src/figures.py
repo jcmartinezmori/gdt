@@ -20,7 +20,7 @@ def instance_maps(filename):
 
     radius_factor = 2
 
-    G, U, B, stop_nodes, rhos, W, st_pairs, dists, C, L, L_st = src.instance.load_instance(instance_filename)
+    G, U, B, stop_nodes_dict, rhos, W, T, st_pairs, dists, C, L, L_st = src.instance.load_instance(instance_filename)
 
     # current service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
@@ -33,10 +33,10 @@ def instance_maps(filename):
         ).add_to(folium_map)
     for ell in C.keys():
         h = C[ell]['headway']
-        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']]
+        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in C[ell]['path_nodes']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
+                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(C[ell]['route_id'], h)
         ).add_to(folium_map)
     folium_map.save('./results/maps/html/current_service_plan_{0}.html'.format(instance_filename))
 

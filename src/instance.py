@@ -78,12 +78,22 @@ def get_graphs(from_polygon=True):
 
     B = U.to_directed()
 
+    for _, _, data in G.edges(data=True):
+        if data['highway'] == 'motorway':
+            data['time'] = data['length'] / (SPEED['highway'] * 1000)
+        else:
+            data['time'] = data['length'] / (SPEED['street'] * 1000)
+    for _, _, data in U.edges(data=True):
+        data['time'] = data['length'] / (SPEED['sidewalk'] * 1000)
+    for _, _, data in B.edges(data=True):
+        data['time'] = data['length'] / (SPEED['sidewalk'] * 1000)
+
     return G, U, B
 
 
-def get_stop_nodes(U):
+def get_stop_nodes_dict(U):
 
-    print('     Running get_stop_nodes(*) ... ')
+    print('     Running get_stop_nodes_dict(*) ... ')
 
     stops_df = pd.read_csv('./data/{0}/stops.txt'.format(GTFS), delimiter=',').set_index('stop_id')
 
@@ -97,34 +107,34 @@ def get_stop_nodes(U):
     stops_df['node'] = ox.distance.nearest_nodes(
         U, stops_gdf_proj.geometry.centroid.x, stops_gdf_proj.geometry.centroid.y
     )
-    stop_nodes = stops_df['node'].to_dict()
+    stop_nodes_dict = stops_df['node'].to_dict()
 
-    return stop_nodes
+    return stop_nodes_dict
 
 
-def get_rhos(U, stop_nodes):
+def get_rhos(U, stop_nodes_dict):
 
     print('     Running get_rhos(*) ... ')
 
-    rhos = {t: 0 for t in stop_nodes.values()}
+    rhos = {s: 0 for s in stop_nodes_dict.values()}
 
-    for s in U.nodes():
-        neighborhood_distances = nx.single_source_dijkstra_path_length(
-            U, s, cutoff=WALK_COVER_FACTOR * WALK_DIST, weight='length'
+    for u in U.nodes():
+        neighborhood_dists = nx.single_source_dijkstra_path_length(
+            U, u, cutoff=WALK_COVER_FACTOR * WALK_DIST, weight='length'
         )
-        neighborhood_stops = [t for t in stop_nodes.values() if t in neighborhood_distances.keys()]
+        neighborhood_stops = [s for s in stop_nodes_dict.values() if s in neighborhood_dists.keys()]
         try:
-            t = min(neighborhood_stops, key=lambda t: neighborhood_distances[t])
-            rhos[t] += float(U.nodes[s]['feature_ct'])
+            s = min(neighborhood_stops, key=lambda s: neighborhood_dists[s])
+            rhos[s] += float(U.nodes[u]['feature_ct'])
         except ValueError:
             continue
 
     return rhos
 
 
-def get_W_T_st_pairs_dists(U, stop_nodes, rhos):
+def get_W_T(stop_nodes_dict, rhos):
 
-    print('     Running get_W_st_pairs_dists(*) ... ')
+    print('     Running get_W_T(*) ... ')
 
     trips_df = pd.read_csv('./data/{0}/trips.txt'.format(GTFS), delimiter=',')
     stop_times_df = pd.read_csv('./data/{0}/stop_times.txt'.format(GTFS), delimiter=',')
@@ -138,8 +148,21 @@ def get_W_T_st_pairs_dists(U, stop_nodes, rhos):
         for stop_id in route_stop_times_df['stop_id']:
             stops_route_usage[stop_id].add(route_id)
 
-    W = {stop_nodes[stop_id] for stop_id in stops_route_usage.keys() if rhos[stop_nodes[stop_id]] >= RHO_CUTOFF}
-    T = {stop_nodes[stop_id] for stop_id in stops_route_usage.keys() if len(stops_route_usage[stop_id]) >= 3}
+    W = {
+        stop_nodes_dict[stop_id] for stop_id in stops_route_usage.keys()
+        if rhos[stop_nodes_dict[stop_id]] >= RHO_CUTOFF and len(stops_route_usage[stop_id]) >= W_CUTOFF
+    }
+    T = {
+        stop_nodes_dict[stop_id] for stop_id in stops_route_usage.keys()
+        if rhos[stop_nodes_dict[stop_id]] >= RHO_CUTOFF and len(stops_route_usage[stop_id]) >= T_CUTOFF
+    }
+
+    return W, T
+
+
+def get_st_pairs_times(G, U, W, T):
+
+    print('     Running get_st_pairs_times(*) ... ')
 
     walk_trips = dict()
     for s in W:
@@ -152,17 +175,18 @@ def get_W_T_st_pairs_dists(U, stop_nodes, rhos):
     st_pairs = []
     for s, t in it.combinations(W, 2):
         if t not in walk_trips[s] and s not in walk_trips[t]:
-            st_pairs.append(tuple(sorted((s, t))))
+            if s in T or t in T:
+                st_pairs.append(tuple(sorted((s, t))))
 
-    dists = {
-        s: {t: length for t, length in nx.single_source_dijkstra_path_length(U, s, weight='length').items() if t in W}
+    times = {
+        s: {t: length for t, length in nx.single_source_dijkstra_path_length(G, s, weight='time').items() if t in W}
         for s in W
     }
 
-    return W, T, st_pairs, dists
+    return st_pairs, times
 
 
-def get_C(G, stop_nodes):
+def get_C(G, stop_nodes_dict, W):
 
     print('     Running get_C(*) ... ')
 
@@ -185,12 +209,12 @@ def get_C(G, stop_nodes):
         ]
 
         outlier_stop_ids = set()
-        for stop_id, route_direction_stop_id_stop_times_df in route_direction_stop_times_df.groupby('stop_id'):
-            if route_direction_stop_id_stop_times_df.shape[0] <= 2:
+        for stop_id, route_direction_stop_stop_times_df in route_direction_stop_times_df.groupby('stop_id'):
+            if route_direction_stop_stop_times_df.shape[0] <= 2:
                 outlier_stop_ids.add(stop_id)
             else:
-                dt1 = route_direction_stop_id_stop_times_df.sort_values('departure_time')['departure_time'].shift(-1)
-                dt2 = route_direction_stop_id_stop_times_df.sort_values('departure_time')['departure_time']
+                dt1 = route_direction_stop_stop_times_df.sort_values('departure_time')['departure_time'].shift(-1)
+                dt2 = route_direction_stop_stop_times_df.sort_values('departure_time')['departure_time']
                 diff = dt1 - dt2
                 diff = diff.dt.total_seconds() / 60
                 headways[route_id][direction_id].extend(diff[:-1])
@@ -217,25 +241,29 @@ def get_C(G, stop_nodes):
                 stop_id_sequences[route_id][0] and
                 stop_id_sequences[route_id][1]
         ):
+
+            print('         Processing ell = {0} ... '.format(ell))
+
             C[ell] = dict()
             C[ell]['route_id'] = route_id
             C[ell]['headway'] = max(headways[route_id][0], headways[route_id][1])
             C[ell]['stop_id_sequence'] = stop_id_sequences[route_id][0] + stop_id_sequences[route_id][1]
-            C[ell]['stop_node_sequence'] = [stop_nodes[s] for s in C[ell]['stop_id_sequence']]
+            C[ell]['stop_node_sequence'] = [
+                stop_nodes_dict[s] for s in C[ell]['stop_id_sequence'] if stop_nodes_dict[s] in W
+            ]
             if C[ell]['stop_node_sequence'][-1] != C[ell]['stop_node_sequence'][0]:
-                C[ell]['stop_id_sequence'].append(C[ell]['stop_id_sequence'][0])
                 C[ell]['stop_node_sequence'].append(C[ell]['stop_node_sequence'][0])
 
-            length = 0
+            time = 0
             path_nodes = []
             for stop1, stop2 in zip(C[ell]['stop_node_sequence'][:-1], C[ell]['stop_node_sequence'][1:]):
-                seg_length, seg_path_nodes = nx.single_source_dijkstra(G, stop1, stop2, weight='length')
-                length += seg_length
+                seg_time, seg_path_nodes = nx.single_source_dijkstra(G, stop1, stop2, weight='time')
+                time += seg_time
                 path_nodes.extend(seg_path_nodes[:-1])
-            length += G.edges[path_nodes[-1], seg_path_nodes[-1], 0]['length']
+            time += G.edges[path_nodes[-1], seg_path_nodes[-1], 0]['time']
             path_nodes.append(seg_path_nodes[-1])
 
-            C[ell]['length'] = length
+            C[ell]['time'] = time
             C[ell]['path_nodes'] = path_nodes
 
             ell += 1
@@ -250,11 +278,12 @@ def get_L_L_st(G, B, W, st_pairs, dists, C):
     L = C.copy()
     for ell in L.keys():
         L[ell]['st_pairs'] = set()
+
     L_st = {(s, t): set() for s, t in st_pairs}
 
     for ell in L.keys():
 
-        print(ell)
+        print('         Processing ell = {0} ... '.format(ell))
 
         ell_path_nodes = set(L[ell]['path_nodes'])
         ell_walk_nodes = set(
@@ -265,16 +294,16 @@ def get_L_L_st(G, B, W, st_pairs, dists, C):
 
         P = nx.compose(G.subgraph(ell_path_nodes).copy(), B.subgraph(ell_walk_nodes).copy())
 
-        P_dists = {
-            s: {t: length for t, length in
-                nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
+        P_times = {
+            s: {t: time for t, time in
+                nx.single_source_dijkstra_path_length(P, s, weight='time').items() if t in W}
             for s in W.intersection(P.nodes())
         }
 
         for s, t in st_pairs:
             if {s, t}.issubset(P.nodes()):
-                if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
-                    if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
+                if P_times[s][t] <= DETOUR_FACTOR * times[s][t]:
+                    if P_times[t][s] <= DETOUR_FACTOR * times[t][s]:
                         L_st[(s, t)].add(ell)
                         L[ell]['st_pairs'].add((s, t))
 
@@ -347,21 +376,18 @@ def load_instance(instance_filename):
     U = __load_U(instance_filename)
     B = __load_B(instance_filename)
 
-    with open('./results/instances/stop_nodes_{0}.pkl'.format(instance_filename), 'rb') as file:
-        stop_nodes = pickle.load(file)
-
-    with open('./results/instances/rhos_{0}.pkl'.format(instance_filename), 'rb') as file:
-        rhos = pickle.load(file)
+    stop_nodes_dict = __load_stop_nodes_dict(instance_filename)
+    rhos = __load_rhos(instance_filename)
 
     W, T = __load_W_T(instance_filename)
-    st_pairs = __load_st_pairs(instance_filename)
-    with open('./results/instances/dists_{0}.pkl'.format(instance_filename), 'rb') as file:
-        dists = pickle.load(file)
+    st_pairs, times = __load_st_pairs_times(instance_filename)
 
-    C, L, L_st = __load_C_L_L_st(instance_filename)
+    C = __load_C(instance_filename)
+    L, L_st = __load_L_L_st(instance_filename)
+
     # T_st = __load_T_st(instance_filename)
 
-    return G, U, B, stop_nodes, rhos, W, T, st_pairs, dists, C, L, L_st
+    return G, U, B, stop_nodes_dict, rhos, W, T, st_pairs, times, C, L, L_st
 
 
 def __load_G(instance_filename):
@@ -385,7 +411,23 @@ def __load_B(instance_filename):
     return B
 
 
-def __load_W(instance_filename):
+def __load_stop_nodes_dict(instance_filename):
+
+    with open('./results/instances/stop_nodes_dict_{0}.pkl'.format(instance_filename), 'rb') as file:
+        stop_nodes_dict = pickle.load(file)
+
+    return stop_nodes_dict
+
+
+def __load_rhos(instance_filename):
+
+    with open('./results/instances/rhos_{0}.pkl'.format(instance_filename), 'rb') as file:
+        rhos = pickle.load(file)
+
+    return rhos
+
+
+def __load_W_T(instance_filename):
 
     with open('./results/instances/W_{0}.pkl'.format(instance_filename), 'rb') as file:
         W = pickle.load(file)
@@ -393,27 +435,36 @@ def __load_W(instance_filename):
     with open('./results/instances/T_{0}.pkl'.format(instance_filename), 'rb') as file:
         T = pickle.load(file)
 
-    return T
+    return W, T
 
 
-def __load_st_pairs(instance_filename):
+def __load_st_pairs_times(instance_filename):
 
     with open('./results/instances/st_pairs_{0}.pkl'.format(instance_filename), 'rb') as file:
         st_pairs = pickle.load(file)
 
-    return st_pairs
+    with open('./results/instances/times_{0}.pkl'.format(instance_filename), 'rb') as file:
+        times = pickle.load(file)
+
+    return st_pairs, times
 
 
-def __load_C_L_L_st(instance_filename):
+def __load_C(instance_filename):
 
     with open('./results/instances/C_{0}.pkl'.format(instance_filename), 'rb') as file:
         C = pickle.load(file)
+
+    return C
+
+
+def __load_L_L_st(instance_filename):
+
     with open('./results/instances/L_{0}.pkl'.format(instance_filename), 'rb') as file:
         L = pickle.load(file)
     with open('./results/instances/L_st_{0}.pkl'.format(instance_filename), 'rb') as file:
         L_st = pickle.load(file)
 
-    return C, L, L_st
+    return L, L_st
 
 
 def __load_T_st(instance_filename):
