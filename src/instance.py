@@ -110,7 +110,7 @@ def get_rhos(U, stop_nodes):
 
     for s in U.nodes():
         neighborhood_distances = nx.single_source_dijkstra_path_length(
-            U, s, cutoff=WALK_TRIP_FACTOR * WALK_DIST, weight='length'
+            U, s, cutoff=WALK_COVER_FACTOR * WALK_DIST, weight='length'
         )
         neighborhood_stops = [t for t in stop_nodes.values() if t in neighborhood_distances.keys()]
         try:
@@ -122,11 +122,24 @@ def get_rhos(U, stop_nodes):
     return rhos
 
 
-def get_W_st_pairs_dists(U, rhos):
+def get_W_T_st_pairs_dists(U, stop_nodes, rhos):
 
     print('     Running get_W_st_pairs_dists(*) ... ')
 
-    W = {s for s, rho in rhos.items() if rho >= RHO_CUTOFF}
+    trips_df = pd.read_csv('./data/{0}/trips.txt'.format(GTFS), delimiter=',')
+    stop_times_df = pd.read_csv('./data/{0}/stop_times.txt'.format(GTFS), delimiter=',')
+
+    trips_df = trips_df[trips_df['service_id'] == 'WK']
+    stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(trips_df['trip_id'])]
+
+    stops_route_usage = {stop_id: set() for stop_id in stop_times_df['stop_id'].unique()}
+    for route_id, route_trips_df in trips_df.groupby('route_id'):
+        route_stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(route_trips_df['trip_id'])]
+        for stop_id in route_stop_times_df['stop_id']:
+            stops_route_usage[stop_id].add(route_id)
+
+    W = {stop_nodes[stop_id] for stop_id in stops_route_usage.keys() if rhos[stop_nodes[stop_id]] >= RHO_CUTOFF}
+    T = {stop_nodes[stop_id] for stop_id in stops_route_usage.keys() if len(stops_route_usage[stop_id]) >= 3}
 
     walk_trips = dict()
     for s in W:
@@ -146,7 +159,7 @@ def get_W_st_pairs_dists(U, rhos):
         for s in W
     }
 
-    return W, st_pairs, dists
+    return W, T, st_pairs, dists
 
 
 def get_C(G, stop_nodes):
@@ -196,7 +209,8 @@ def get_C(G, stop_nodes):
                     stop_id_sequences[route_id][direction_id] = stop_id_sequence
 
     C = {}
-    for ell, route_id in enumerate(routes_df['route_id']):
+    ell = 0
+    for route_id in routes_df['route_id']:
         if (
                 headways[route_id][0] and
                 headways[route_id][1] and
@@ -224,6 +238,8 @@ def get_C(G, stop_nodes):
             C[ell]['length'] = length
             C[ell]['path_nodes'] = path_nodes
 
+            ell += 1
+
     return C
 
 
@@ -232,9 +248,13 @@ def get_L_L_st(G, B, W, st_pairs, dists, C):
     print('     Running get_L_L_st(*) ... ')
 
     L = C.copy()
+    for ell in L.keys():
+        L[ell]['st_pairs'] = set()
     L_st = {(s, t): set() for s, t in st_pairs}
 
     for ell in L.keys():
+
+        print(ell)
 
         ell_path_nodes = set(L[ell]['path_nodes'])
         ell_walk_nodes = set(
@@ -243,7 +263,7 @@ def get_L_L_st(G, B, W, st_pairs, dists, C):
             ).keys()
         )
 
-        P = nx.compose(G.subgraph(ell_path_nodes).copy(), B.subgraph(set(ell_walk_nodes)).copy())
+        P = nx.compose(G.subgraph(ell_path_nodes).copy(), B.subgraph(ell_walk_nodes).copy())
 
         P_dists = {
             s: {t: length for t, length in
@@ -256,54 +276,69 @@ def get_L_L_st(G, B, W, st_pairs, dists, C):
                 if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
                     if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
                         L_st[(s, t)].add(ell)
+                        L[ell]['st_pairs'].add((s, t))
 
     return L, L_st
 
 
-def get_candidate_transfers(G, B, W, st_pairs, dists, L, L_st):
+def get_T_st(G, W, st_pairs, dists):
 
-    print('     Running candidate_transfers(*) ... ')
+    print('     Running get_T_st(*) ... ')
 
-    T, T_st = dict(), {(s, t): set() for s, t in st_pairs}
+    T_st = {(s, t): set() for s, t in st_pairs}
 
-    for ell1, ell2 in it.combinations(L.keys(), 2):
+    for idx, (s, t) in enumerate(st_pairs):
 
-        if not L[ell1]['stops'].isdisjoint(L[ell2]['stops']):
+        print(idx)
 
-            ell1_walk_cover = L[ell1]['walk_cover']
-            ell2_walk_cover = L[ell2]['walk_cover']
-            ell1_and_ell2_walk_cover = ell1_walk_cover.intersection(ell2_walk_cover)
+        s_neighborhood = set(nx.single_source_dijkstra_path_length(
+            U, s, cutoff=dists[s][t] * DETOUR_FACTOR, weight='length'
+        ).keys()).intersection(W)
 
-            ell1_ell2_walk_cover_overlap = len(ell1_and_ell2_walk_cover) / min(len(ell1_walk_cover), len(ell2_walk_cover))
+        for c in s_neighborhood - {s, t}:
+            sct_length = nx.shortest_path_length(G, s, c, weight='length') + nx.shortest_path_length(G, c, t, weight='length')
+            if sct_length <= DETOUR_FACTOR * dists[s][t]:
+                tcs_length = nx.shortest_path_length(G, t, c, weight='length') + nx.shortest_path_length(G, c, s, weight='length')
+                if tcs_length <= DETOUR_FACTOR * dists[t][s]:
+                    T_st[(s, t)].add(c)
 
-            if ell1_ell2_walk_cover_overlap <= OVERLAP_THRESHOLD:
+    return T_st
 
-                ell1_or_ell2_walk_cover = ell1_walk_cover.union(ell2_walk_cover)
-
-                P1 = nx.compose(G.subgraph(L[ell1]['path']).copy(), B.subgraph(L[ell1]['walk']).copy())
-                P2 = nx.compose(G.subgraph(L[ell2]['path']).copy(), B.subgraph(L[ell2]['walk']).copy())
-                P = nx.compose(P1, P2)
-
-                P_dists = {
-                    s: {t: length for t, length in
-                        nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
-                    for s in W.intersection(P.nodes())
-                }
-
-                T[tuple(sorted((ell1, ell2)))] = {
-                    'st_coverage': set()
-                }
-                for s, t in st_pairs:
-                    if {s, t}.issubset(ell1_or_ell2_walk_cover):
-                        if ell1 not in L_st[(s, t)] and ell2 not in L_st[(s, t)]:
-                            if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
-                                if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
-                                    T[tuple(sorted((ell1, ell2)))]['st_coverage'].add((s, t))
-                                    T_st[(s, t)].add(tuple(sorted((ell1, ell2))))
-
-                print('         transfer count: {0}'.format(len(T)))
-
-    return T, T_st
+# def get_T_st(G, B, W, st_pairs, dists, L):
+#
+#     print('     Running get_T_st(*) ... ')
+#
+#     T_st = {(s, t): set() for s, t in st_pairs}
+#
+#     for ell1, ell2 in it.combinations(L.keys(), 2):
+#
+#         print(ell1, ell2)
+#
+#         if set(L[ell1]['stop_node_sequence']).intersection(L[ell2]['stop_node_sequence']):
+#
+#             ell1_ell2_path_nodes = set(L[ell1]['path_nodes']).union(L[ell2]['path_nodes'])
+#             ell1_ell2_walk_nodes = set(
+#                 nx.multi_source_dijkstra_path_length(
+#                     B, set(L[ell1]['stop_node_sequence']).union(L[ell2]['stop_node_sequence']),
+#                     weight='length', cutoff=WALK_COVER_FACTOR * WALK_DIST
+#                 ).keys()
+#             )
+#
+#             P = nx.compose(G.subgraph(ell1_ell2_path_nodes).copy(), B.subgraph(ell1_ell2_walk_nodes).copy())
+#
+#             P_dists = {
+#                 s: {t: length for t, length in
+#                     nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
+#                 for s in W.intersection(P.nodes())
+#             }
+#
+#             for s, t in set(st_pairs) - set(L[ell1]['st_pairs']) - set(L[ell2]['st_pairs']):
+#                 if {s, t}.issubset(P.nodes()):
+#                     if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
+#                         if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
+#                             T_st[(s, t)].add(tuple(sorted((ell1, ell2))))
+#
+#     return T_st
 
 
 def load_instance(instance_filename):
@@ -318,15 +353,15 @@ def load_instance(instance_filename):
     with open('./results/instances/rhos_{0}.pkl'.format(instance_filename), 'rb') as file:
         rhos = pickle.load(file)
 
-    W = __load_W(instance_filename)
+    W, T = __load_W_T(instance_filename)
     st_pairs = __load_st_pairs(instance_filename)
     with open('./results/instances/dists_{0}.pkl'.format(instance_filename), 'rb') as file:
         dists = pickle.load(file)
 
-    L, L_st, C = __load_L_L_st_C(instance_filename)
-    T, T_st = __load_T_T_st(instance_filename)
+    C, L, L_st = __load_C_L_L_st(instance_filename)
+    # T_st = __load_T_st(instance_filename)
 
-    return G, U, B, stop_nodes, rhos, W, st_pairs, dists, L, L_st, C, T, T_st
+    return G, U, B, stop_nodes, rhos, W, T, st_pairs, dists, C, L, L_st
 
 
 def __load_G(instance_filename):
@@ -355,7 +390,10 @@ def __load_W(instance_filename):
     with open('./results/instances/W_{0}.pkl'.format(instance_filename), 'rb') as file:
         W = pickle.load(file)
 
-    return W
+    with open('./results/instances/T_{0}.pkl'.format(instance_filename), 'rb') as file:
+        T = pickle.load(file)
+
+    return T
 
 
 def __load_st_pairs(instance_filename):
@@ -366,26 +404,24 @@ def __load_st_pairs(instance_filename):
     return st_pairs
 
 
-def __load_L_L_st_C(instance_filename):
+def __load_C_L_L_st(instance_filename):
 
+    with open('./results/instances/C_{0}.pkl'.format(instance_filename), 'rb') as file:
+        C = pickle.load(file)
     with open('./results/instances/L_{0}.pkl'.format(instance_filename), 'rb') as file:
         L = pickle.load(file)
     with open('./results/instances/L_st_{0}.pkl'.format(instance_filename), 'rb') as file:
         L_st = pickle.load(file)
-    with open('./results/instances/C_{0}.pkl'.format(instance_filename), 'rb') as file:
-        C = pickle.load(file)
 
-    return L, L_st, C
+    return C, L, L_st
 
 
-def __load_T_T_st(instance_filename):
+def __load_T_st(instance_filename):
 
-    with open('./results/instances/T_{0}.pkl'.format(instance_filename), 'rb') as file:
-        T = pickle.load(file)
     with open('./results/instances/T_st_{0}.pkl'.format(instance_filename), 'rb') as file:
         T_st = pickle.load(file)
 
-    return T, T_st
+    return T_st
 
 
 # def get_candidate_lines(G, U, B, stop_nodes, W, st_pairs, dists):
@@ -517,3 +553,47 @@ def __load_T_T_st(instance_filename):
 #
 #     return L, L_st, C
 
+# def get_candidate_transfers(G, B, W, st_pairs, dists, L, L_st):
+#
+#     print('     Running candidate_transfers(*) ... ')
+#
+#     T, T_st = dict(), {(s, t): set() for s, t in st_pairs}
+#
+#     for ell1, ell2 in it.combinations(L.keys(), 2):
+#
+#         if not L[ell1]['stops'].isdisjoint(L[ell2]['stops']):
+#
+#             ell1_walk_cover = L[ell1]['walk_cover']
+#             ell2_walk_cover = L[ell2]['walk_cover']
+#             ell1_and_ell2_walk_cover = ell1_walk_cover.intersection(ell2_walk_cover)
+#
+#             ell1_ell2_walk_cover_overlap = len(ell1_and_ell2_walk_cover) / min(len(ell1_walk_cover), len(ell2_walk_cover))
+#
+#             if ell1_ell2_walk_cover_overlap <= OVERLAP_THRESHOLD:
+#
+#                 ell1_or_ell2_walk_cover = ell1_walk_cover.union(ell2_walk_cover)
+#
+#                 P1 = nx.compose(G.subgraph(L[ell1]['path']).copy(), B.subgraph(L[ell1]['walk']).copy())
+#                 P2 = nx.compose(G.subgraph(L[ell2]['path']).copy(), B.subgraph(L[ell2]['walk']).copy())
+#                 P = nx.compose(P1, P2)
+#
+#                 P_dists = {
+#                     s: {t: length for t, length in
+#                         nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
+#                     for s in W.intersection(P.nodes())
+#                 }
+#
+#                 T[tuple(sorted((ell1, ell2)))] = {
+#                     'st_coverage': set()
+#                 }
+#                 for s, t in st_pairs:
+#                     if {s, t}.issubset(ell1_or_ell2_walk_cover):
+#                         if ell1 not in L_st[(s, t)] and ell2 not in L_st[(s, t)]:
+#                             if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
+#                                 if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
+#                                     T[tuple(sorted((ell1, ell2)))]['st_coverage'].add((s, t))
+#                                     T_st[(s, t)].add(tuple(sorted((ell1, ell2))))
+#
+#                 print('         transfer count: {0}'.format(len(T)))
+#
+#     return T, T_st

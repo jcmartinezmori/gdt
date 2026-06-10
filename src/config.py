@@ -6,7 +6,7 @@ CENTER = (39.74643047624631, -105.00249399677395)
 CUSTOM_FILTER = (
     '['
     '"highway"~'
-    '"motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|residential"'
+    '"motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|residential|living_street"'
     ']'
 )
 PLACE = 'DENVER'
@@ -29,7 +29,7 @@ WALK_COVER_FACTOR = 2
 WALK_COVER_IS_STOPS = 0
 WALK_DIST = 400
 WALK_TRIP_FACTOR = 4
-RHO_CUTOFF = 42
+RHO_CUTOFF = 12
 
 
 # --- SOLVER PARAMETERS --- #

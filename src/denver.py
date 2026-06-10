@@ -53,3 +53,12 @@ final_stop_sequences = {
 # for key, value in final_stop_sequences.items():
 #     if value[0] != value[-1]:
 #         print(key)
+
+stops_usage = {stop_id: set() for stop_id in stops_df['stop_id']}
+for route_id, route_trips_df in trips_df.groupby('route_id'):
+    route_stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(route_trips_df['trip_id'])]
+    for stop_id in route_stop_times_df['stop_id']:
+        stops_usage[stop_id].add(route_id)
+
+
+sum(1 for stop_id, used in stops_usage.items() if len(used) == 1)

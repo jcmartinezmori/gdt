@@ -12,7 +12,7 @@ def main(solver_params, load=False):
 
     if load:
 
-        G, U, B, stop_nodes, rhos, W, st_pairs, dists, L, L_st, C, T, T_st = src.instance.load_instance(instance_filename)
+        G, U, B, stop_nodes, rhos, W, st_pairs, dists, C, L, L_st = src.instance.load_instance(instance_filename)
 
     else:
 
@@ -29,9 +29,11 @@ def main(solver_params, load=False):
         with open('./results/instances/rhos_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(rhos, file)
 
-        W, st_pairs, dists = src.instance.get_W_st_pairs_dists(U, rhos)
+        W, T, st_pairs, dists = src.instance.get_W_T_st_pairs_dists(U, rhos)
         with open('./results/instances/W_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(W, file)
+        with open('./results/instances/T_{0}.pkl'.format(instance_filename), 'wb') as file:
+            pickle.dump(T, file)
         with open('./results/instances/st_pairs_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(st_pairs, file)
         with open('./results/instances/dists_{0}.pkl'.format(instance_filename), 'wb') as file:
@@ -47,22 +49,17 @@ def main(solver_params, load=False):
         with open('./results/instances/L_st_{0}.pkl'.format(instance_filename), 'wb') as file:
             pickle.dump(L_st, file)
 
-        1 + '1'
-
-        T, T_st = src.instance.get_candidate_transfers(G, B, W, st_pairs, dists, L, L_st)
-        with open('./results/instances/T_{0}.pkl'.format(instance_filename), 'wb') as file:
-            pickle.dump(T, file)
-        with open('./results/instances/T_st_{0}.pkl'.format(instance_filename), 'wb') as file:
-            pickle.dump(T_st, file)
+        # T_st = src.instance.get_T_st(G, B, W, st_pairs, dists, L)
+        # with open('./results/instances/T_st_{0}.pkl'.format(instance_filename), 'wb') as file:
+        #     pickle.dump(T_st, file)
 
     print('     Some statistics ... ')
     print('         - number of nodes: {0}'.format(len(W)))
     print('         - number of s-t pairs: {0}'.format(len(st_pairs)))
     print('         - number of headway options: {0}'.format(len(H)))
     print('         - number of candidate lines: {0}'.format(len(L)))
-    print('         - number of transfer candidates: {0}'.format(len(T)))
 
-    P_u, P_y = src.solver.service_plans(G, st_pairs, L, L_st, C, T, T_st)
+    P_u, P_y = src.solver.service_plans_no_transfers(G, rhos, st_pairs, L, L_st, C)
 
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'wb') as file:
         pickle.dump(P_u, file)

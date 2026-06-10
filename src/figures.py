@@ -20,21 +20,20 @@ def instance_maps(filename):
 
     radius_factor = 2
 
-    G = src.instance.__load_G(instance_filename)
-    W = src.instance.__load_W(instance_filename)
-    L, L_st, C = src.instance.__load_L_L_st_C(instance_filename)
+    G, U, B, stop_nodes, rhos, W, st_pairs, dists, C, L, L_st = src.instance.load_instance(instance_filename)
 
     # current service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
-        radius = radius_factor * (1 + np.log10(float(G.nodes[s]['rho'])))
+        radius = radius_factor * (1 + np.log10(float(rhos[s])))
         folium.CircleMarker(
             location=(float(G.nodes[s]['lat']), float(G.nodes[s]['lon'])), color=HEXBLACK, radius=radius, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
-    for ell, h in C:
-        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path']]
+    for ell in C.keys():
+        h = C[ell]['headway']
+        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
                 ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
@@ -45,7 +44,7 @@ def instance_maps(filename):
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
-        radius = radius_factor * (1 + np.log10(int(G.nodes[s]['rho'])))
+        radius = radius_factor * (1 + np.log10(int(rhos[s])))
         folium.CircleMarker(
             location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
             fill=True, fill_opacity=1, tooltip=s
@@ -56,13 +55,13 @@ def instance_maps(filename):
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
-        radius = radius_factor * (1 + np.log10(int(G.nodes[s]['rho'])))
+        radius = radius_factor * (1 + np.log10(int(rhos[s])))
         folium.CircleMarker(
             location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell in L.keys():
-        ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
+        ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path_nodes']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
                 ell_coords, color=HEXCOLOR, weight=4, opacity=1, tooltip='Line: {0}'.format(L[ell]['route_id'])
