@@ -11,7 +11,8 @@ def main(solver_params, load=False):
 
     if load:
 
-        G, U, B, stop_nodes, rhos, W, st_pairs, times, C, L, L_st = src.instance.load_instance(instance_filename)
+        # G, U, B, stop_nodes_dict, rhos, W, T, st_pairs, times, C, L, L_st = src.instance.load_full_instance(PLACE)
+        rhos, st_pairs, C, L, L_st = src.instance.load_solver_instance(PLACE)
 
     else:
 
@@ -45,32 +46,26 @@ def main(solver_params, load=False):
         #     pickle.dump(st_pairs, file)
         # with open('./results/instances/times_{0}.pkl'.format(PLACE), 'wb') as file:
         #     pickle.dump(times, file)
-        st_pairs, times = src.instance.__load_st_pairs_times(PLACE)
+        st_pairs = src.instance.__load_st_pairs(PLACE)
+        times = src.instance.__load_times(PLACE)
 
-        # C = src.instance.get_C(G, stop_nodes_dict, W)
-        # with open('./results/instances/C_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(C, file)
-        C = src.instance.__load_C(PLACE)
+        C = src.instance.get_C(G, stop_nodes_dict, W)
+        with open('./results/instances/C_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(C, file)
+        # C = src.instance.__load_C(PLACE)
 
-        # L, L_st = src.instance.get_L_L_st(G, B, W, st_pairs, times, C)
-        # with open('./results/instances/L_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(L, file)
-        # with open('./results/instances/L_st_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(L_st, file)
-        L, L_st = src.instance.__load_L_L_st(PLACE)
-
+        L, L_st = src.instance.get_L_L_st(G, B, W, st_pairs, times, C)
+        with open('./results/instances/L_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(L, file)
+        with open('./results/instances/L_st_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(L_st, file)
+        # L, L_st = src.instance.__load_L_L_st(PLACE)
 
         # T_st = src.instance.get_T_st(G, B, W, st_pairs, dists, L)
         # with open('./results/instances/T_st_{0}.pkl'.format(instance_filename), 'wb') as file:
         #     pickle.dump(T_st, file)
 
-    print('     Some statistics ... ')
-    print('         - number of nodes: {0}'.format(len(W)))
-    print('         - number of s-t pairs: {0}'.format(len(st_pairs)))
-    print('         - number of headway options: {0}'.format(len(H)))
-    print('         - number of candidate lines: {0}'.format(len(L)))
-
-    P_u, P_y = src.solver.service_plans_no_transfers(G, rhos, st_pairs, L, L_st, C)
+    P_u, P_y = src.solver.service_plans(rhos, st_pairs, C, L, L_st)
 
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'wb') as file:
         pickle.dump(P_u, file)

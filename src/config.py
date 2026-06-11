@@ -19,11 +19,11 @@ TAGS = {'amenity': True, 'shop': True, 'office': True, 'building:levels': True}
 # --- MODEL PARAMETERS --- #
 COST_FACTOR = 1
 DETOUR_FACTOR = 2
-H = [5, 10, 15, 20, 30, 45, 60]
+H = [5, 10, 15, 20, 30, 45, 60, 120]
 IC_FACTOR = 0.0
 OVERLAP_THRESHOLD = 1/4
 NO_RANDOM_LINES = 0
-TRANSFER_MIN_H = 15
+BUDGET_RATIO = 0.7
 SIZE_FACTOR = 1
 WALK_COVER_FACTOR = 2
 WALK_COVER_IS_STOPS = 0
@@ -31,7 +31,7 @@ WALK_DIST = 400
 WALK_TRIP_FACTOR = 4
 RHO_CUTOFF = 5
 W_CUTOFF = 1
-T_CUTOFF = 3
+T_CUTOFF = 2
 SPEED = {
     'sidewalk': 5,
     'street': 50,

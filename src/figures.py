@@ -76,9 +76,7 @@ def solution_maps(filename, solver_params):
 
     radius_factor = 2
 
-    G = src.instance.__load_G(instance_filename)
-    W = src.instance.__load_W(instance_filename)
-    L, L_st, C = src.instance.__load_L_L_st_C(instance_filename)
+    G, U, B, stop_nodes_dict, rhos, W, T, st_pairs, dists, C, L, L_st = src.instance.load_full_instance(instance_filename)
 
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
         P_u = pickle.load(file)
@@ -89,13 +87,13 @@ def solution_maps(filename, solver_params):
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
-        radius = radius_factor * (1 + np.log10(int(G.nodes[s]['rho'])))
+        radius = radius_factor * (1 + np.log10(float(rhos[s])))
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
+            location=(float(G.nodes[s]['lat']), float(G.nodes[s]['lon'])), color=HEXBLACK, radius=radius, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell, h in P_u:
-        ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
+        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
                 ell_coords, color=HEXCOLOR, weight=4/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
@@ -106,13 +104,13 @@ def solution_maps(filename, solver_params):
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
     for s in W:
-        radius = 1.5*(1 + np.log10(int(G.nodes[s]['rho'])))
+        radius = radius_factor * (1 + np.log10(float(rhos[s])))
         folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
+            location=(float(G.nodes[s]['lat']), float(G.nodes[s]['lon'])), color=HEXBLACK, radius=radius, weight=0,
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell, h in P_y:
-        ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path']]
+        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
                 ell_coords, color=HEXCOLOR, weight=4/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
@@ -270,8 +268,8 @@ async def convert_html_to_images(html_dir, pdf_dir):
 if __name__ == '__main__':
     filename = 'DENVER'
     solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
-    instance_maps(filename)
-    # solution_maps(filename, solver_params)
+    # instance_maps(filename)
+    solution_maps(filename, solver_params)
     # level_of_service(filename, solver_params)
 
     html_dir = './results/maps/html'

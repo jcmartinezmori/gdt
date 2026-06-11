@@ -292,7 +292,7 @@ def get_L_L_st(G, B, W, st_pairs, times, C):
             ).keys()
         )
 
-        P = nx.compose(G.subgraph(ell_path_nodes).copy(), B.subgraph(ell_walk_nodes).copy())
+        P = nx.compose(B.subgraph(ell_walk_nodes).copy(), G.subgraph(ell_path_nodes).copy())
 
         P_times = {
             s: {t: time for t, time in
@@ -370,7 +370,7 @@ def get_T_st(G, W, st_pairs, dists):
 #     return T_st
 
 
-def load_instance(instance_filename):
+def load_full_instance(instance_filename):
 
     G = __load_G(instance_filename)
     U = __load_U(instance_filename)
@@ -380,7 +380,8 @@ def load_instance(instance_filename):
     rhos = __load_rhos(instance_filename)
 
     W, T = __load_W_T(instance_filename)
-    st_pairs, times = __load_st_pairs_times(instance_filename)
+    st_pairs = __load_st_pairs(instance_filename)
+    times = __load_times(instance_filename)
 
     C = __load_C(instance_filename)
     L, L_st = __load_L_L_st(instance_filename)
@@ -388,6 +389,18 @@ def load_instance(instance_filename):
     # T_st = __load_T_st(instance_filename)
 
     return G, U, B, stop_nodes_dict, rhos, W, T, st_pairs, times, C, L, L_st
+
+
+def load_solver_instance(instance_filename):
+
+    rhos = __load_rhos(instance_filename)
+
+    st_pairs = __load_st_pairs(instance_filename)
+
+    C = __load_C(instance_filename)
+    L, L_st = __load_L_L_st(instance_filename)
+
+    return rhos, st_pairs, C, L, L_st
 
 
 def __load_G(instance_filename):
@@ -444,15 +457,20 @@ def __load_W_T(instance_filename):
     return W, T
 
 
-def __load_st_pairs_times(instance_filename):
+def __load_st_pairs(instance_filename):
 
     with open('./results/instances/st_pairs_{0}.pkl'.format(instance_filename), 'rb') as file:
         st_pairs = pickle.load(file)
 
+    return st_pairs
+
+
+def __load_times(instance_filename):
+
     with open('./results/instances/times_{0}.pkl'.format(instance_filename), 'rb') as file:
         times = pickle.load(file)
 
-    return st_pairs, times
+    return times
 
 
 def __load_C(instance_filename):
