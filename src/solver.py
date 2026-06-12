@@ -1,9 +1,7 @@
-import networkx as nx
 import gurobipy as gp
-import time
-
+import networkx as nx
 import numpy as np
-
+import time
 from src.config import *
 
 
@@ -15,7 +13,7 @@ def service_plans(rhos, st_pairs, C, L, L_st):
     m.ModelSense = gp.GRB.MAXIMIZE
     m.Params.MIPFocus = MIP_FOCUS
     m.Params.TimeLimit = TIME_LIMIT
-    m.NumStart = 2
+    m.NumStart = 1
 
     print('     Started writing variables ... ')
     m._x = m.addVars(((ell, h) for ell in L.keys() for h in H), vtype=gp.GRB.BINARY, name='x')
@@ -23,7 +21,7 @@ def service_plans(rhos, st_pairs, C, L, L_st):
     for s, t in st_pairs:
         m._y[(s, t)] = m.addVar(vtype=gp.GRB.BINARY, name='y')
         m._f[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1 / min(H), name='f')
-        m._u[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1 / np.log2(min(H)), name='u')
+        m._u[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1 / np.sqrt(min(H)), name='u')
     t1 = time.time()
     print('         ... done writing variables!')
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
@@ -39,35 +37,32 @@ def service_plans(rhos, st_pairs, C, L, L_st):
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
     print('         Started writing budget constraints ...')
-    B_var = gp.quicksum(L[ell]['time'] / h * var for (ell, h), var in m._x.items())
-    B_C = sum(C[ell]['time'] / C[ell]['headway'] for ell in C.keys()) * COST_FACTOR
-    m.addConstr(B_var <= B_C)
-    lhs = gp.quicksum(m._x.values())
-    rhs = len(C) * SIZE_FACTOR
-    m.addConstr(lhs <= rhs)
+    budget_var = gp.quicksum(L[ell]['time'] / h * var for (ell, h), var in m._x.items())
+    budget_C = sum(C[ell]['time'] / C[ell]['headway'] for ell in C.keys()) * COST_FACTOR
+    m.addConstr(budget_var <= budget_C)
     t1 = time.time()
     print('             ... done writing budget constraint!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
     print('         Started writing level of service constraints ...')
     for (s, t), var in m._f.items():
-        # lb = 0
-        # for ell in L_st[(s, t)]:
-        #     if ell in C_dict.keys():
-        #         lb += 1 / C_dict[ell]
-        # lb = min(1 / min(H), lb) * IC_FACTOR
-        # m.addConstr(lb <= var)
+        lb = 0
+        for ell in L_st[(s, t)]:
+            if ell in C.keys():
+                lb += 1 / C[ell]['headway']
+        lb = min(1 / min(H), lb) * IC_FACTOR
+        m.addConstr(lb <= var)
         ub = 0
         for ell in L_st[(s, t)]:
             for h in H:
                 ub += 1 / h * m._x[(ell, h)]
         m.addConstr(var <= ub)
-        m.addConstr(m._y[(s, t)] <= 1 - 1 / max(H) + var)
+        m.addConstr(m._y[(s, t)] <= 1 - 1 / COVERAGE_FREQ + var)
     for (s, t), var in m._u.items():
         ub = 0
         for ell in L_st[(s, t)]:
             for h in H:
-                ub += 1 / np.log2(h) * m._x[(ell, h)]
+                ub += 1 / np.sqrt(h) * m._x[(ell, h)]
         m.addConstr(var <= ub)
     t1 = time.time()
     print('             ... done writing level of service constraints!')
@@ -77,53 +72,32 @@ def service_plans(rhos, st_pairs, C, L, L_st):
     t1 = time.time()
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    # print('     Started writing first warm start ...')
-    # m.params.StartNumber = 0
-    # for (ell, h), var in m._x.items():
-    #     if (ell, h) in C:
-    #         var.Start = 1
-    #     else:
-    #         var.Start = 0
-    # print('         ... done writing first warm start!')
-    # t1 = time.time()
-    # print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
+    print('     Started writing warm start ...')
+    m.params.StartNumber = 0
+    for (ell, h), var in m._x.items():
+        if ell in C.keys():
+            if C[ell]['headway'] == h:
+                var.Start = 1
+            else:
+                var.Start = 0
+        else:
+            var.Start = 0
+    print('         ... done writing first warm start!')
+    t1 = time.time()
+    print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
     ridership_obj = gp.quicksum(rhos[s] * rhos[t] * var for (s, t), var in m._u.items())
     coverage_obj = gp.quicksum(m._y.values())
 
     print('     Started optimizing ... ')
 
-    cnstr = m.addConstr(B_var <= BUDGET_RATIO * B_C)
-    m.setObjective(ridership_obj)
-    m.optimize()
-    rid = m.ObjVal
-
-    m.remove(cnstr)
-    cnstr = m.addConstr(B_var <= (1 - BUDGET_RATIO) * B_C)
-    m.setObjective(coverage_obj)
-    m.optimize()
-    cov = m.ObjVal
-
-    m.remove(cnstr)
-    m.addConstr(ridership_obj >= rid)
-    m.addConstr(coverage_obj >= cov)
-
-    m.setObjective(ridership_obj)
+    m.setObjectiveN(ridership_obj, index=0, priority=2, reltol=OBJ_REL_TOL)
+    m.setObjectiveN(coverage_obj, index=1, priority=1)
     m.optimize()
     P_u = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 
-    print('     Started writing second warm start ...')
-    m.params.StartNumber = 1
-    for (ell, h), var in m._x.items():
-        if (ell, h) in P_u:
-            var.Start = 1
-        else:
-            var.Start = 0
-    print('         ... done writing second warm start!')
-    t1 = time.time()
-    print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
-
-    m.setObjective(coverage_obj)
+    m.setObjectiveN(coverage_obj, index=0, priority=2, reltol=OBJ_REL_TOL)
+    m.setObjectiveN(ridership_obj, index=1, priority=1)
     m.optimize()
     P_y = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 

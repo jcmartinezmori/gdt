@@ -49,17 +49,17 @@ def main(solver_params, load=False):
         st_pairs = src.instance.__load_st_pairs(PLACE)
         times = src.instance.__load_times(PLACE)
 
-        C = src.instance.get_C(G, stop_nodes_dict, W)
-        with open('./results/instances/C_{0}.pkl'.format(PLACE), 'wb') as file:
-            pickle.dump(C, file)
-        # C = src.instance.__load_C(PLACE)
+        # C = src.instance.get_C(G, stop_nodes_dict, W)
+        # with open('./results/instances/C_{0}.pkl'.format(PLACE), 'wb') as file:
+        #     pickle.dump(C, file)
+        C = src.instance.__load_C(PLACE)
 
-        L, L_st = src.instance.get_L_L_st(G, B, W, st_pairs, times, C)
-        with open('./results/instances/L_{0}.pkl'.format(PLACE), 'wb') as file:
-            pickle.dump(L, file)
-        with open('./results/instances/L_st_{0}.pkl'.format(PLACE), 'wb') as file:
-            pickle.dump(L_st, file)
-        # L, L_st = src.instance.__load_L_L_st(PLACE)
+        # L, L_st = src.instance.get_L_L_st(G, B, W, st_pairs, times, C)
+        # with open('./results/instances/L_{0}.pkl'.format(PLACE), 'wb') as file:
+        #     pickle.dump(L, file)
+        # with open('./results/instances/L_st_{0}.pkl'.format(PLACE), 'wb') as file:
+        #     pickle.dump(L_st, file)
+        L, L_st = src.instance.__load_L_L_st(PLACE)
 
         # T_st = src.instance.get_T_st(G, B, W, st_pairs, dists, L)
         # with open('./results/instances/T_st_{0}.pkl'.format(instance_filename), 'wb') as file:
@@ -76,5 +76,5 @@ def main(solver_params, load=False):
 if __name__ == '__main__':
 
     solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
-    load = False
+    load = True
     main(solver_params, load=load)
