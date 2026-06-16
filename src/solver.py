@@ -38,7 +38,7 @@ def service_plans(rhos, st_pairs, C, L, L_st):
 
     print('         Started writing budget constraints ...')
     budget_var = gp.quicksum(L[ell]['time'] / h * var for (ell, h), var in m._x.items())
-    budget_C = sum(C[ell]['time'] / C[ell]['headway'] for ell in C.keys()) * COST_FACTOR
+    budget_C = sum(C[ell]['time'] / C[ell]['h'] for ell in C.keys()) * BUDGET_FACTOR
     m.addConstr(budget_var <= budget_C)
     t1 = time.time()
     print('             ... done writing budget constraint!')
@@ -46,12 +46,6 @@ def service_plans(rhos, st_pairs, C, L, L_st):
 
     print('         Started writing level of service constraints ...')
     for (s, t), var in m._f.items():
-        lb = 0
-        for ell in L_st[(s, t)]:
-            if ell in C.keys():
-                lb += 1 / C[ell]['headway']
-        lb = min(1 / min(H), lb) * IC_FACTOR
-        m.addConstr(lb <= var)
         ub = 0
         for ell in L_st[(s, t)]:
             for h in H:
@@ -64,6 +58,9 @@ def service_plans(rhos, st_pairs, C, L, L_st):
             for h in H:
                 ub += 1 / np.sqrt(h) * m._x[(ell, h)]
         m.addConstr(var <= ub)
+    #     for x0 in np.arange(0, 1/min(H), 1/max(H))[1:]:
+    #         ub = m._f[(s, t)] / (2 * np.sqrt(x0)) + np.sqrt(x0) / 2
+    #         m.addConstr(var <= ub)
     t1 = time.time()
     print('             ... done writing level of service constraints!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))
@@ -76,7 +73,7 @@ def service_plans(rhos, st_pairs, C, L, L_st):
     m.params.StartNumber = 0
     for (ell, h), var in m._x.items():
         if ell in C.keys():
-            if C[ell]['headway'] == h:
+            if C[ell]['h'] == h:
                 var.Start = 1
             else:
                 var.Start = 0
@@ -86,18 +83,31 @@ def service_plans(rhos, st_pairs, C, L, L_st):
     t1 = time.time()
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
 
-    ridership_obj = gp.quicksum(rhos[s] * rhos[t] * var for (s, t), var in m._u.items())
+    ridership_obj = gp.quicksum(np.sqrt(rhos[s] * rhos[t]) * var for (s, t), var in m._u.items())
     coverage_obj = gp.quicksum(m._y.values())
 
     print('     Started optimizing ... ')
 
-    m.setObjectiveN(ridership_obj, index=0, priority=2, reltol=OBJ_REL_TOL)
-    m.setObjectiveN(coverage_obj, index=1, priority=1)
+    cnstr = m.addConstr(budget_var <= RIDERSHIP_FACTOR * budget_C)
+    m.setObjective(ridership_obj)
+    m.optimize()
+    ridership_obj_val = m.ObjVal
+    m.remove(cnstr)
+
+    cnstr = m.addConstr(budget_var <= (1 - RIDERSHIP_FACTOR) * budget_C)
+    m.setObjective(coverage_obj)
+    m.optimize()
+    coverage_obj_val = m.ObjVal
+    m.remove(cnstr)
+
+    m.addConstr(ridership_obj >= ridership_obj_val)
+    m.addConstr(coverage_obj >= coverage_obj_val)
+
+    m.setObjective(ridership_obj)
     m.optimize()
     P_u = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 
-    m.setObjectiveN(coverage_obj, index=0, priority=2, reltol=OBJ_REL_TOL)
-    m.setObjectiveN(ridership_obj, index=1, priority=1)
+    m.setObjective(coverage_obj)
     m.optimize()
     P_y = {(ell, h) for (ell, h), var in m._x.items() if var.X > 0}
 

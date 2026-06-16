@@ -14,13 +14,18 @@ RETAIN_ALL = False
 SIMPLIFY = True
 GTFS = 'rtd-co-us'
 TAGS = {'amenity': True, 'shop': True, 'office': True, 'building:levels': True}
+RAIL_DIRS = [
+    './data/{0}/rail/direct-light/'.format(GTFS),
+    './data/{0}/rail/direct-commuter/'.format(GTFS),
+    './data/{0}/rail/purchased-commuter/'.format(GTFS),
+]
 
 
 # --- MODEL PARAMETERS --- #
-COST_FACTOR = 1
+BUDGET_FACTOR = 0.8
+RIDERSHIP_FACTOR = 0.75
 DETOUR_FACTOR = 2
 H = [5, 10, 15, 20, 30, 45, 60, 120]
-IC_FACTOR = 0.5
 NO_RANDOM_LINES = 0
 OBJ_REL_TOL = 0.01
 SIZE_FACTOR = 1
@@ -28,15 +33,19 @@ WALK_COVER_FACTOR = 2
 WALK_COVER_IS_STOPS = 0
 WALK_DIST = 400
 WALK_TRIP_FACTOR = 4
-RHO_CUTOFF = 5
+RHO_CUTOFF = 4
 COVERAGE_FREQ = 60
 W_CUTOFF = 1
 T_CUTOFF = 2
 SPEED = {
     'sidewalk': 5,
-    'street': 50,
+    'street': 40,
     'highway': 100
 }
+TIME_PER_STOP = 1/4
+OUTLIER_STOP_CUTOFF = 1
+SERVICE_START = '15:00:00'
+SERVICE_END = '20:00:00'
 
 
 # --- SOLVER PARAMETERS --- #

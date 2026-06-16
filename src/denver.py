@@ -1,6 +1,20 @@
 import pandas as pd
 from src.config import *
 
+RAIL_DIRS = [
+    './data/{0}/rail/direct-light/'.format(GTFS),
+    './data/{0}/rail/direct-commuter/'.format(GTFS),
+    './data/{0}/rail/purchased-commuter/'.format(GTFS),
+]
+
+stop_times_df = pd.DataFrame()
+for rail_dir in RAIL_DIRS:
+    stop_times_df = pd.concat(
+        [stop_times_df, pd.read_csv(rail_dir + 'stop_times.txt', delimiter=',')],
+        ignore_index=True
+    )
+
+
 routes_df = pd.read_csv('./data/{0}/routes.txt'.format(GTFS), delimiter=',')
 trips_df = pd.read_csv('./data/{0}/trips.txt'.format(GTFS), delimiter=',')
 stops_df = pd.read_csv('./data/{0}/stops.txt'.format(GTFS), delimiter=',')

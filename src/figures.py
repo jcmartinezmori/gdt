@@ -32,7 +32,7 @@ def instance_maps(filename):
             fill=True, fill_opacity=1, tooltip=s
         ).add_to(folium_map)
     for ell in C.keys():
-        h = C[ell]['headway']
+        h = C[ell]['h']
         ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in C[ell]['path_nodes']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
@@ -69,14 +69,16 @@ def instance_maps(filename):
     folium_map.save('./results/maps/html/candidate_lines_{0}.html'.format(instance_filename))
 
 
-def solution_maps(filename, solver_params):
+def solution_maps(solver_params):
 
-    instance_filename = filename
-    solution_filename = filename + '_' + solver_params
+    solution_filename = PLACE + '_' + solver_params
 
     radius_factor = 2
 
-    G, U, B, stop_nodes_dict, rhos, W, T, st_pairs, dists, C, L, L_st = src.instance.load_full_instance(instance_filename)
+    G = src.instance.__load_G(PLACE)
+    rhos = src.instance.__load_rhos(PLACE)
+    W, _, _ = src.instance.__load_W_T_F(PLACE)
+    L, _ = src.instance.__load_L_L_st(PLACE)
 
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
         P_u = pickle.load(file)
@@ -96,7 +98,7 @@ def solution_maps(filename, solver_params):
         ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=4/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
+                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
         ).add_to(folium_map)
     folium_map.save('./results/maps/html/ridership_service_plan_{0}.html'.format(solution_filename))
 
@@ -113,7 +115,7 @@ def solution_maps(filename, solver_params):
         ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']]
         HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
         folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=4/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
+                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
         ).add_to(folium_map)
     folium_map.save('./results/maps/html/coverage_service_plan_{0}.html'.format(solution_filename))
 
@@ -266,10 +268,10 @@ async def convert_html_to_images(html_dir, pdf_dir):
 
 
 if __name__ == '__main__':
-    filename = 'DENVER'
-    solver_params = 'IC-FACTOR-{0}'.format(IC_FACTOR)
+
+    solver_params = 'BUDGET_FACTOR-{0}'.format(BUDGET_FACTOR)
     # instance_maps(filename)
-    solution_maps(filename, solver_params)
+    solution_maps(solver_params)
     # level_of_service(filename, solver_params)
 
     html_dir = './results/maps/html'

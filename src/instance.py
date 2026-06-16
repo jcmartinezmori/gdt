@@ -95,7 +95,13 @@ def get_stop_nodes_dict(U):
 
     print('     Running get_stop_nodes_dict(*) ... ')
 
-    stops_df = pd.read_csv('./data/{0}/stops.txt'.format(GTFS), delimiter=',').set_index('stop_id')
+    stops_df = pd.read_csv('./data/{0}/stops.txt'.format(GTFS), delimiter=',')
+    for rail_dir in RAIL_DIRS:
+        stops_df = pd.concat(
+            [stops_df, pd.read_csv(rail_dir + 'stops.txt', delimiter=',')],
+            ignore_index=True
+        )
+    stops_df = stops_df.set_index('stop_id')
 
     stops_gdf = gpd.GeoDataFrame(
         stops_df,
@@ -132,21 +138,32 @@ def get_rhos(U, stop_nodes_dict):
     return rhos
 
 
-def get_W_T(stop_nodes_dict, rhos):
+def get_W_T_F(stop_nodes_dict, rhos):
 
-    print('     Running get_W_T(*) ... ')
+    print('     Running get_W_T_F(*) ... ')
 
-    trips_df = pd.read_csv('./data/{0}/trips.txt'.format(GTFS), delimiter=',')
     stop_times_df = pd.read_csv('./data/{0}/stop_times.txt'.format(GTFS), delimiter=',')
+    trips_df = pd.read_csv('./data/{0}/trips.txt'.format(GTFS), delimiter=',')
 
     trips_df = trips_df[trips_df['service_id'] == 'WK']
     stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(trips_df['trip_id'])]
+
+    stop_times_df['departure_time'] = pd.to_timedelta(stop_times_df['departure_time'])
+    stop_times_df = stop_times_df[stop_times_df['departure_time'] >= SERVICE_START]
+    stop_times_df = stop_times_df[stop_times_df['departure_time'] <= SERVICE_END]
 
     stops_route_usage = {stop_id: set() for stop_id in stop_times_df['stop_id'].unique()}
     for route_id, route_trips_df in trips_df.groupby('route_id'):
         route_stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(route_trips_df['trip_id'])]
         for stop_id in route_stop_times_df['stop_id']:
             stops_route_usage[stop_id].add(route_id)
+
+    rail_stop_times_df = pd.DataFrame()
+    for rail_dir in RAIL_DIRS:
+        rail_stop_times_df = pd.concat(
+            [rail_stop_times_df, pd.read_csv(rail_dir + 'stop_times.txt', delimiter=',')],
+            ignore_index=True
+        )
 
     W = {
         stop_nodes_dict[stop_id] for stop_id in stops_route_usage.keys()
@@ -155,12 +172,15 @@ def get_W_T(stop_nodes_dict, rhos):
     T = {
         stop_nodes_dict[stop_id] for stop_id in stops_route_usage.keys()
         if rhos[stop_nodes_dict[stop_id]] >= RHO_CUTOFF and len(stops_route_usage[stop_id]) >= T_CUTOFF
-    }
+    }.intersection(W)
+    F = {
+        stop_nodes_dict[stop_id] for stop_id in rail_stop_times_df['stop_id'].unique()
+    }.intersection(W)
 
-    return W, T
+    return W, T, F
 
 
-def get_st_pairs_times(G, U, W, T):
+def get_st_pairs_times(G, U, W, T, F):
 
     print('     Running get_st_pairs_times(*) ... ')
 
@@ -172,11 +192,18 @@ def get_st_pairs_times(G, U, W, T):
             ).keys()
         ).intersection(W)
 
+    rail_W = set()
+    for s in F:
+        rail_W = rail_W.union(
+            nx.single_source_dijkstra_path_length(U, s, cutoff=WALK_COVER_FACTOR * WALK_DIST, weight='length').keys()
+        ).intersection(W)
+
     st_pairs = []
     for s, t in it.combinations(W, 2):
         if t not in walk_trips[s] and s not in walk_trips[t]:
             if s in T or t in T:
-                st_pairs.append(tuple(sorted((s, t))))
+                if not (s in rail_W and t in rail_W):
+                    st_pairs.append(tuple(sorted((s, t))))
 
     times = {
         s: {t: length for t, length in nx.single_source_dijkstra_path_length(G, s, weight='time').items() if t in W}
@@ -191,13 +218,15 @@ def get_C(G, stop_nodes_dict, W):
     print('     Running get_C(*) ... ')
 
     routes_df = pd.read_csv('./data/{0}/routes.txt'.format(GTFS), delimiter=',')
-    trips_df = pd.read_csv('./data/{0}/trips.txt'.format(GTFS), delimiter=',')
     stop_times_df = pd.read_csv('./data/{0}/stop_times.txt'.format(GTFS), delimiter=',')
+    trips_df = pd.read_csv('./data/{0}/trips.txt'.format(GTFS), delimiter=',')
 
     trips_df = trips_df[trips_df['service_id'] == 'WK']
     stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(trips_df['trip_id'])]
 
     stop_times_df['departure_time'] = pd.to_timedelta(stop_times_df['departure_time'])
+    stop_times_df = stop_times_df[stop_times_df['departure_time'] >= SERVICE_START]
+    stop_times_df = stop_times_df[stop_times_df['departure_time'] <= SERVICE_END]
 
     headways = {route_id: {0: [], 1: []} for route_id in routes_df['route_id']}
     stop_id_sequences = {route_id: {0: [], 1: []} for route_id in routes_df['route_id']}
@@ -210,7 +239,7 @@ def get_C(G, stop_nodes_dict, W):
 
         outlier_stop_ids = set()
         for stop_id, route_direction_stop_stop_times_df in route_direction_stop_times_df.groupby('stop_id'):
-            if route_direction_stop_stop_times_df.shape[0] <= 2:
+            if route_direction_stop_stop_times_df.shape[0] <= OUTLIER_STOP_CUTOFF:
                 outlier_stop_ids.add(stop_id)
             else:
                 dt1 = route_direction_stop_stop_times_df.sort_values('departure_time')['departure_time'].shift(-1)
@@ -218,10 +247,13 @@ def get_C(G, stop_nodes_dict, W):
                 diff = dt1 - dt2
                 diff = diff.dt.total_seconds() / 60
                 headways[route_id][direction_id].extend(diff[:-1])
+                st = (route_direction_stop_stop_times_df['departure_time'].min() - SERVICE_START).total_seconds() / 60
+                et = (SERVICE_END - route_direction_stop_stop_times_df['departure_time'].max()).total_seconds() / 60
+                headways[route_id][direction_id].extend([st, et])
 
         if headways[route_id][direction_id]:
             headways[route_id][direction_id] = min(
-                H, key=lambda h: abs(h - np.median(headways[route_id][direction_id]))
+                H, key=lambda h: abs(h - np.mean(headways[route_id][direction_id]))
             )
 
         for trip_id, route_direction_trip_stop_times_df in route_direction_stop_times_df.groupby('trip_id'):
@@ -246,7 +278,7 @@ def get_C(G, stop_nodes_dict, W):
 
             C[ell] = dict()
             C[ell]['route_id'] = route_id
-            C[ell]['headway'] = max(headways[route_id][0], headways[route_id][1])
+            C[ell]['h'] = max(headways[route_id][0], headways[route_id][1])
             C[ell]['stop_id_sequence'] = stop_id_sequences[route_id][0] + stop_id_sequences[route_id][1]
             C[ell]['stop_node_sequence'] = [
                 stop_nodes_dict[s] for s in C[ell]['stop_id_sequence'] if stop_nodes_dict[s] in W
@@ -262,6 +294,8 @@ def get_C(G, stop_nodes_dict, W):
                 path_nodes.extend(seg_path_nodes[:-1])
             time += G.edges[path_nodes[-1], seg_path_nodes[-1], 0]['time']
             path_nodes.append(seg_path_nodes[-1])
+
+            time += len(C[ell]['stop_node_sequence']) * TIME_PER_STOP
 
             C[ell]['time'] = time
             C[ell]['path_nodes'] = path_nodes
@@ -310,66 +344,6 @@ def get_L_L_st(G, B, W, st_pairs, times, C):
     return L, L_st
 
 
-def get_T_st(G, W, st_pairs, dists):
-
-    print('     Running get_T_st(*) ... ')
-
-    T_st = {(s, t): set() for s, t in st_pairs}
-
-    for idx, (s, t) in enumerate(st_pairs):
-
-        print(idx)
-
-        s_neighborhood = set(nx.single_source_dijkstra_path_length(
-            U, s, cutoff=dists[s][t] * DETOUR_FACTOR, weight='length'
-        ).keys()).intersection(W)
-
-        for c in s_neighborhood - {s, t}:
-            sct_length = nx.shortest_path_length(G, s, c, weight='length') + nx.shortest_path_length(G, c, t, weight='length')
-            if sct_length <= DETOUR_FACTOR * dists[s][t]:
-                tcs_length = nx.shortest_path_length(G, t, c, weight='length') + nx.shortest_path_length(G, c, s, weight='length')
-                if tcs_length <= DETOUR_FACTOR * dists[t][s]:
-                    T_st[(s, t)].add(c)
-
-    return T_st
-
-# def get_T_st(G, B, W, st_pairs, dists, L):
-#
-#     print('     Running get_T_st(*) ... ')
-#
-#     T_st = {(s, t): set() for s, t in st_pairs}
-#
-#     for ell1, ell2 in it.combinations(L.keys(), 2):
-#
-#         print(ell1, ell2)
-#
-#         if set(L[ell1]['stop_node_sequence']).intersection(L[ell2]['stop_node_sequence']):
-#
-#             ell1_ell2_path_nodes = set(L[ell1]['path_nodes']).union(L[ell2]['path_nodes'])
-#             ell1_ell2_walk_nodes = set(
-#                 nx.multi_source_dijkstra_path_length(
-#                     B, set(L[ell1]['stop_node_sequence']).union(L[ell2]['stop_node_sequence']),
-#                     weight='length', cutoff=WALK_COVER_FACTOR * WALK_DIST
-#                 ).keys()
-#             )
-#
-#             P = nx.compose(G.subgraph(ell1_ell2_path_nodes).copy(), B.subgraph(ell1_ell2_walk_nodes).copy())
-#
-#             P_dists = {
-#                 s: {t: length for t, length in
-#                     nx.single_source_dijkstra_path_length(P, s, weight='length').items() if t in W}
-#                 for s in W.intersection(P.nodes())
-#             }
-#
-#             for s, t in set(st_pairs) - set(L[ell1]['st_pairs']) - set(L[ell2]['st_pairs']):
-#                 if {s, t}.issubset(P.nodes()):
-#                     if P_dists[s][t] <= DETOUR_FACTOR * dists[s][t]:
-#                         if P_dists[t][s] <= DETOUR_FACTOR * dists[t][s]:
-#                             T_st[(s, t)].add(tuple(sorted((ell1, ell2))))
-#
-#     return T_st
-
-
 def load_full_instance(instance_filename):
 
     G = __load_G(instance_filename)
@@ -379,7 +353,7 @@ def load_full_instance(instance_filename):
     stop_nodes_dict = __load_stop_nodes_dict(instance_filename)
     rhos = __load_rhos(instance_filename)
 
-    W, T = __load_W_T(instance_filename)
+    W, T, F = __load_W_T_F(instance_filename)
     st_pairs = __load_st_pairs(instance_filename)
     times = __load_times(instance_filename)
 
@@ -446,7 +420,7 @@ def __load_rhos(instance_filename):
     return rhos
 
 
-def __load_W_T(instance_filename):
+def __load_W_T_F(instance_filename):
 
     with open('./results/instances/W_{0}.pkl'.format(instance_filename), 'rb') as file:
         W = pickle.load(file)
@@ -454,7 +428,10 @@ def __load_W_T(instance_filename):
     with open('./results/instances/T_{0}.pkl'.format(instance_filename), 'rb') as file:
         T = pickle.load(file)
 
-    return W, T
+    with open('./results/instances/F_{0}.pkl'.format(instance_filename), 'rb') as file:
+        F = pickle.load(file)
+
+    return W, T, F
 
 
 def __load_st_pairs(instance_filename):
