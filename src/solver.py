@@ -20,8 +20,8 @@ def service_plans(rhos, st_pairs, C, L, L_st):
     m._y, m._f, m._u = dict(), dict(), dict()
     for s, t in st_pairs:
         m._y[(s, t)] = m.addVar(vtype=gp.GRB.BINARY, name='y')
-        m._f[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1 / min(H), name='f')
-        m._u[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1 / np.sqrt(min(H)), name='u')
+        m._f[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=gp.GRB.INFINITY, name='f')
+        m._u[(s, t)] = m.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, ub=1/np.sqrt(min(H)), name='u')
     t1 = time.time()
     print('         ... done writing variables!')
     print('         ... elapsed time: {0:.2f} sec'.format(t1 - t0))
@@ -51,16 +51,16 @@ def service_plans(rhos, st_pairs, C, L, L_st):
             for h in H:
                 ub += 1 / h * m._x[(ell, h)]
         m.addConstr(var <= ub)
-        m.addConstr(m._y[(s, t)] <= 1 - 1 / COVERAGE_FREQ + var)
+        m.addConstr(m._y[(s, t)] <= 1 - 1 / COVERAGE_H + var)
     for (s, t), var in m._u.items():
         ub = 0
         for ell in L_st[(s, t)]:
             for h in H:
                 ub += 1 / np.sqrt(h) * m._x[(ell, h)]
         m.addConstr(var <= ub)
-    #     for x0 in np.arange(0, 1/min(H), 1/max(H))[1:]:
-    #         ub = m._f[(s, t)] / (2 * np.sqrt(x0)) + np.sqrt(x0) / 2
-    #         m.addConstr(var <= ub)
+        # for x0 in np.linspace(0, 1/min(H), 9 + 2)[1:-1]:
+        #     ub = m._f[(s, t)] / (2 * np.sqrt(x0)) + np.sqrt(x0) / 2
+        #     m.addConstr(var <= ub)
     t1 = time.time()
     print('             ... done writing level of service constraints!')
     print('             ... elapsed time: {0:.2f} sec'.format(t1 - t0))

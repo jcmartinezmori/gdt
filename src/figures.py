@@ -14,70 +14,58 @@ import src.instance
 from src.config import *
 
 
-def instance_maps(filename):
+def __draw_stop(folium_map, s, G, rhos, F):
 
-    instance_filename = filename
+    radius = 1 + np.log10(float(rhos[s]))
+    radius *= 5 if s in F else 1
+    color = HEXVERMILLION if s in F else HEXBLACK
+    if s in F:
+        folium.RegularPolygonMarker(
+            location=(float(G.nodes[s]['lat']), float(G.nodes[s]['lon'])), color=color, radius=radius, weight=0,
+            fill=True, fill_opacity=1, tooltip=s,
+            number_of_sides=5
+        ).add_to(folium_map)
+    else:
+        folium.CircleMarker(
+            location=(float(G.nodes[s]['lat']), float(G.nodes[s]['lon'])), color=color, radius=radius, weight=0,
+            fill=True, fill_opacity=1, tooltip=s
+        ).add_to(folium_map)
 
-    radius_factor = 2
 
-    G, U, B, stop_nodes_dict, rhos, W, T, st_pairs, dists, C, L, L_st = src.instance.load_instance(instance_filename)
+def __draw_line(folium_map, ell, h, G, L):
+    ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']]
+    HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
+    folium.PolyLine(
+        ell_coords, color=HEXCOLOR, weight=max(H) / h, opacity=1,
+        tooltip='Line: {0}, Service: {1:.2f} runs/hr'.format(L[ell]['route_id'], 60 / h)
+    ).add_to(folium_map)
+
+
+def current_map():
+
+    G = src.instance.__load_G(PLACE)
+    rhos = src.instance.__load_rhos(PLACE)
+    W, T, F = src.instance.__load_W_T_F(PLACE)
+    C = src.instance.__load_C(PLACE)
+    L, _ = src.instance.__load_L_L_st(PLACE)
 
     # current service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
-    for s in W:
-        radius = radius_factor * (1 + np.log10(float(rhos[s])))
-        folium.CircleMarker(
-            location=(float(G.nodes[s]['lat']), float(G.nodes[s]['lon'])), color=HEXBLACK, radius=radius, weight=0,
-            fill=True, fill_opacity=1, tooltip=s
-        ).add_to(folium_map)
     for ell in C.keys():
-        h = C[ell]['h']
-        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in C[ell]['path_nodes']]
-        HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
-        folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(C[ell]['route_id'], h)
-        ).add_to(folium_map)
-    folium_map.save('./results/maps/html/current_service_plan_{0}.html'.format(instance_filename))
-
-    # amenities
-    folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
-    folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
+        __draw_line(folium_map, ell, C[ell]['h'], G, L)
     for s in W:
-        radius = radius_factor * (1 + np.log10(int(rhos[s])))
-        folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
-            fill=True, fill_opacity=1, tooltip=s
-        ).add_to(folium_map)
-    folium_map.save('./results/maps/html/amenities_{0}.html'.format(instance_filename))
-
-    # candidate lines
-    folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
-    folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
-    for s in W:
-        radius = radius_factor * (1 + np.log10(int(rhos[s])))
-        folium.CircleMarker(
-            location=(G.nodes[s]['y'], G.nodes[s]['x']), color=HEXBLACK, radius=radius, weight=0,
-            fill=True, fill_opacity=1, tooltip=s
-        ).add_to(folium_map)
-    for ell in L.keys():
-        ell_coords = [(G.nodes[stop]['y'], G.nodes[stop]['x']) for stop in L[ell]['path_nodes']]
-        HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
-        folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=4, opacity=1, tooltip='Line: {0}'.format(L[ell]['route_id'])
-        ).add_to(folium_map)
-    folium_map.save('./results/maps/html/candidate_lines_{0}.html'.format(instance_filename))
+        __draw_stop(folium_map, s, G, rhos, F)
+    folium_map.save('./results/maps/html/current_service_plan_{0}.html'.format(PLACE))
 
 
 def solution_maps(solver_params):
 
     solution_filename = PLACE + '_' + solver_params
 
-    radius_factor = 2
-
     G = src.instance.__load_G(PLACE)
     rhos = src.instance.__load_rhos(PLACE)
-    W, _, _ = src.instance.__load_W_T_F(PLACE)
+    W, T, F = src.instance.__load_W_T_F(PLACE)
     L, _ = src.instance.__load_L_L_st(PLACE)
 
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
@@ -88,36 +76,182 @@ def solution_maps(solver_params):
     # ridership service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
-    for s in W:
-        radius = radius_factor * (1 + np.log10(float(rhos[s])))
-        folium.CircleMarker(
-            location=(float(G.nodes[s]['lat']), float(G.nodes[s]['lon'])), color=HEXBLACK, radius=radius, weight=0,
-            fill=True, fill_opacity=1, tooltip=s
-        ).add_to(folium_map)
     for ell, h in P_u:
-        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']]
-        HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
-        folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
-        ).add_to(folium_map)
+        __draw_line(folium_map, ell, h, G, L)
+    for s in W:
+        __draw_stop(folium_map, s, G, rhos, F)
     folium_map.save('./results/maps/html/ridership_service_plan_{0}.html'.format(solution_filename))
 
     # coverage service plan
     folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
     folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
-    for s in W:
-        radius = radius_factor * (1 + np.log10(float(rhos[s])))
-        folium.CircleMarker(
-            location=(float(G.nodes[s]['lat']), float(G.nodes[s]['lon'])), color=HEXBLACK, radius=radius, weight=0,
-            fill=True, fill_opacity=1, tooltip=s
-        ).add_to(folium_map)
     for ell, h in P_y:
-        ell_coords = [(float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']]
-        HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
-        folium.PolyLine(
-                ell_coords, color=HEXCOLOR, weight=1/h*max(H), opacity=1, tooltip='Line: {0}, Headway: {1}'.format(L[ell]['route_id'], h)
-        ).add_to(folium_map)
+        __draw_line(folium_map, ell, h, G, L)
+    for s in W:
+        __draw_stop(folium_map, s, G, rhos, F)
     folium_map.save('./results/maps/html/coverage_service_plan_{0}.html'.format(solution_filename))
+
+
+def diff_gain_solution_maps(solver_params):
+
+    solution_filename = PLACE + '_' + solver_params
+
+    G = src.instance.__load_G(PLACE)
+    rhos = src.instance.__load_rhos(PLACE)
+    W, _, _ = src.instance.__load_W_T_F(PLACE)
+    C = src.instance.__load_C(PLACE)
+    L, _ = src.instance.__load_L_L_st(PLACE)
+
+    with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
+        P_u = pickle.load(file)
+    with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
+        P_y = pickle.load(file)
+
+    # ridership service plan
+    folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
+    folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
+    for ell, h in P_u:
+        C_ell = C.get(ell)
+        if C_ell is None or C_ell['h'] / h > 1:
+            f_diff = 1/h if C_ell is None else 1/h - 1/C_ell['h']
+            ell_coords = [
+                (float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']
+            ]
+            HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
+            folium.PolyLine(
+                ell_coords, color=HEXCOLOR, weight=max(H) * f_diff, opacity=1,
+                tooltip='Line: {0}, Service Gain: {1:.2f} runs/hr'.format(L[ell]['route_id'], f_diff * 60)
+            ).add_to(folium_map)
+    for s in W:
+        __draw_stop(folium_map, s, G, rhos, F)
+    folium_map.save('./results/maps/html/diff_gain_ridership_service_plan_{0}.html'.format(solution_filename))
+
+    # coverage service plan
+    folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
+    folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
+    for ell, h in P_y:
+        C_ell = C.get(ell)
+        if C_ell is None or C_ell['h'] / h > 1:
+            f_diff = 1/h if C_ell is None else 1/h - 1/C_ell['h']
+            ell_coords = [
+                (float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']
+            ]
+            HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
+            folium.PolyLine(
+                ell_coords, color=HEXCOLOR, weight=max(H) * f_diff, opacity=1,
+                tooltip='Line: {0}, Service Gain: {1:.2f} runs/hr'.format(L[ell]['route_id'], f_diff * 60)
+            ).add_to(folium_map)
+    for s in W:
+        __draw_stop(folium_map, s, G, rhos, F)
+    folium_map.save('./results/maps/html/diff_gain_coverage_service_plan_{0}.html'.format(solution_filename))
+
+
+def diff_loss_solution_maps(solver_params):
+
+    solution_filename = PLACE + '_' + solver_params
+
+    G = src.instance.__load_G(PLACE)
+    rhos = src.instance.__load_rhos(PLACE)
+    W, _, _ = src.instance.__load_W_T_F(PLACE)
+    C = src.instance.__load_C(PLACE)
+    L, _ = src.instance.__load_L_L_st(PLACE)
+
+    with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
+        P_u = pickle.load(file)
+    with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
+        P_y = pickle.load(file)
+
+    # ridership service plan
+    folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
+    folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
+    P_u = {ell: h for ell, h in P_u}
+    for ell in C.keys():
+        P_u_ell_h = P_u.get(ell)
+        if P_u_ell_h is None or P_u_ell_h / C[ell]['h'] > 1:
+            f_diff = 1 / C[ell]['h'] if P_u_ell_h is None else 1/C[ell]['h'] - 1/P_u_ell_h
+            ell_coords = [
+                (float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']
+            ]
+            HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
+            folium.PolyLine(
+                ell_coords, color=HEXCOLOR, weight=max(H) * f_diff, opacity=1,
+                tooltip='Line: {0}, Service Loss: {1:.2f} runs/hr'.format(L[ell]['route_id'], f_diff * 60)
+            ).add_to(folium_map)
+    for s in W:
+        __draw_stop(folium_map, s, G, rhos, F)
+    folium_map.save('./results/maps/html/diff_loss_ridership_service_plan_{0}.html'.format(solution_filename))
+
+    # coverage service plan
+    folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
+    folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
+    P_y = {ell: h for ell, h in P_y}
+    for ell in C.keys():
+        P_y_ell_h = P_y.get(ell)
+        if P_y_ell_h is None or P_y_ell_h / C[ell]['h'] > 1:
+            f_diff = 1 / C[ell]['h'] if P_y_ell_h is None else 1/C[ell]['h'] - 1/P_y_ell_h
+            ell_coords = [
+                (float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']
+            ]
+            HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
+            folium.PolyLine(
+                ell_coords, color=HEXCOLOR, weight=max(H) * f_diff, opacity=1,
+                tooltip='Line: {0}, Service Loss: {1:.2f} runs/hr'.format(L[ell]['route_id'], f_diff * 60)
+            ).add_to(folium_map)
+    for s in W:
+        __draw_stop(folium_map, s, G, rhos, F)
+    folium_map.save('./results/maps/html/diff_loss_coverage_service_plan_{0}.html'.format(solution_filename))
+
+
+def diff_neutral_solution_maps(solver_params):
+
+    solution_filename = PLACE + '_' + solver_params
+
+    G = src.instance.__load_G(PLACE)
+    rhos = src.instance.__load_rhos(PLACE)
+    W, _, _ = src.instance.__load_W_T_F(PLACE)
+    C = src.instance.__load_C(PLACE)
+    L, _ = src.instance.__load_L_L_st(PLACE)
+
+    with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
+        P_u = pickle.load(file)
+    with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
+        P_y = pickle.load(file)
+
+    # ridership service plan
+    folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
+    folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
+    for ell, h in P_u:
+        C_ell = C.get(ell)
+        if C_ell is not None and C_ell['h'] / h == 1:
+            ell_coords = [
+                (float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']
+            ]
+            HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
+            folium.PolyLine(
+                ell_coords, color=HEXCOLOR, weight=max(H) / h, opacity=1,
+                tooltip='Line: {0}, Service: {1:.2f} runs/hr'.format(L[ell]['route_id'], 1 / h * 60)
+            ).add_to(folium_map)
+    for s in W:
+        __draw_stop(folium_map, s, G, rhos, F)
+    folium_map.save('./results/maps/html/diff_neutral_ridership_service_plan_{0}.html'.format(solution_filename))
+
+    # coverage service plan
+    folium_map = folium.Map(location=CENTER, zoom_start=ZOOM, tiles=None)
+    folium.TileLayer('OpenStreetMap', opacity=OPACITY).add_to(folium_map)
+    for ell, h in P_y:
+        C_ell = C.get(ell)
+        if C_ell is not None and C_ell['h'] / h == 1:
+            ell_coords = [
+                (float(G.nodes[stop]['lat']), float(G.nodes[stop]['lon'])) for stop in L[ell]['path_nodes']
+            ]
+            HEXCOLOR = HEXCOLORS[ell % len(HEXCOLORS)]
+            folium.PolyLine(
+                ell_coords, color=HEXCOLOR, weight=max(H) / h, opacity=1,
+                tooltip='Line: {0}, Service: {1:.2f} runs/hr'.format(C[ell]['route_id'], 1 / h * 60)
+            ).add_to(folium_map)
+    for s in W:
+        __draw_stop(folium_map, s, G, rhos, F)
+    folium_map.save('./results/maps/html/diff_neutral_coverage_service_plan_{0}.html'.format(solution_filename))
 
 
 def level_of_service(filename, solver_params):
@@ -269,9 +403,14 @@ async def convert_html_to_images(html_dir, pdf_dir):
 
 if __name__ == '__main__':
 
-    solver_params = 'BUDGET_FACTOR-{0}'.format(BUDGET_FACTOR)
-    # instance_maps(filename)
+    # solver_params = 'BUDGET_FACTOR-{0}_RIDERSHIP_FACTOR-{1}'.format(BUDGET_FACTOR, RIDERSHIP_FACTOR)
+    solver_params = 'BUDGET_FACTOR-{0}_RIDERSHIP_FACTOR-{1}'.format(0.8, 0.6)
+    current_map()
     solution_maps(solver_params)
+    # diff_gain_solution_maps(solver_params)
+    # diff_loss_solution_maps(solver_params)
+    # diff_neutral_solution_maps(solver_params)
+
     # level_of_service(filename, solver_params)
 
     html_dir = './results/maps/html'

@@ -34,34 +34,34 @@ def main(solver_params, load=False):
         #     pickle.dump(rhos, file)
         rhos = src.instance.__load_rhos(PLACE)
 
-        # W, T, F = src.instance.get_W_T_F(stop_nodes_dict, rhos)
-        # with open('./results/instances/W_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(W, file)
-        # with open('./results/instances/T_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(T, file)
-        # with open('./results/instances/F_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(F, file)
+        W, T, F = src.instance.get_W_T_F(stop_nodes_dict, rhos)
+        with open('./results/instances/W_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(W, file)
+        with open('./results/instances/T_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(T, file)
+        with open('./results/instances/F_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(F, file)
         W, T, F = src.instance.__load_W_T_F(PLACE)
 
-        # st_pairs, times = src.instance.get_st_pairs_times(G, U, W, T, F)
-        # with open('./results/instances/st_pairs_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(st_pairs, file)
-        # with open('./results/instances/times_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(times, file)
-        st_pairs = src.instance.__load_st_pairs(PLACE)
-        times = src.instance.__load_times(PLACE)
+        st_pairs, times = src.instance.get_st_pairs_times(G, U, W, T, F)
+        with open('./results/instances/st_pairs_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(st_pairs, file)
+        with open('./results/instances/times_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(times, file)
+        # st_pairs = src.instance.__load_st_pairs(PLACE)
+        # times = src.instance.__load_times(PLACE)
 
-        # C = src.instance.get_C(G, stop_nodes_dict, W)
-        # with open('./results/instances/C_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(C, file)
-        C = src.instance.__load_C(PLACE)
+        C = src.instance.get_C(G, stop_nodes_dict, W)
+        with open('./results/instances/C_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(C, file)
+        # C = src.instance.__load_C(PLACE)
 
-        # L, L_st = src.instance.get_L_L_st(G, B, W, st_pairs, times, C)
-        # with open('./results/instances/L_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(L, file)
-        # with open('./results/instances/L_st_{0}.pkl'.format(PLACE), 'wb') as file:
-        #     pickle.dump(L_st, file)
-        L, L_st = src.instance.__load_L_L_st(PLACE)
+        L, L_st = src.instance.get_L_L_st(G, B, W, st_pairs, times, C)
+        with open('./results/instances/L_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(L, file)
+        with open('./results/instances/L_st_{0}.pkl'.format(PLACE), 'wb') as file:
+            pickle.dump(L_st, file)
+        # L, L_st = src.instance.__load_L_L_st(PLACE)
 
     P_u, P_y = src.solver.service_plans(rhos, st_pairs, C, L, L_st)
 
@@ -73,6 +73,6 @@ def main(solver_params, load=False):
 
 if __name__ == '__main__':
 
-    solver_params = 'BUDGET_FACTOR-{0}'.format(BUDGET_FACTOR)
+    solver_params = 'BUDGET_FACTOR-{0}_RIDERSHIP_FACTOR-{1}'.format(BUDGET_FACTOR, RIDERSHIP_FACTOR)
     load = True
     main(solver_params, load=load)

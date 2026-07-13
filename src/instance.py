@@ -59,7 +59,13 @@ def get_graphs(from_polygon=True):
     for _, data in G.nodes(data=True):
         data['lon'] = data['x']
         data['lat'] = data['y']
+
     G = ox.projection.project_graph(G)
+    G = ox.consolidate_intersections(G, tolerance=CONSOLIDATE_TOL)
+
+    for _, data in G.nodes(data=True):
+        data['lon'] = np.mean(data['lon'])
+        data['lat'] = np.mean(data['lat'])
 
     U = G.to_undirected()
 
@@ -152,11 +158,11 @@ def get_W_T_F(stop_nodes_dict, rhos):
     stop_times_df = stop_times_df[stop_times_df['departure_time'] >= SERVICE_START]
     stop_times_df = stop_times_df[stop_times_df['departure_time'] <= SERVICE_END]
 
-    stops_route_usage = {stop_id: set() for stop_id in stop_times_df['stop_id'].unique()}
+    stop_nodes_route_usage = {stop_node: set() for stop_node in stop_nodes_dict.values()}
     for route_id, route_trips_df in trips_df.groupby('route_id'):
         route_stop_times_df = stop_times_df[stop_times_df['trip_id'].isin(route_trips_df['trip_id'])]
         for stop_id in route_stop_times_df['stop_id']:
-            stops_route_usage[stop_id].add(route_id)
+            stop_nodes_route_usage[stop_nodes_dict[stop_id]].add(route_id)
 
     rail_stop_times_df = pd.DataFrame()
     for rail_dir in RAIL_DIRS:
@@ -166,16 +172,17 @@ def get_W_T_F(stop_nodes_dict, rhos):
         )
 
     W = {
-        stop_nodes_dict[stop_id] for stop_id in stops_route_usage.keys()
-        if rhos[stop_nodes_dict[stop_id]] >= RHO_CUTOFF and len(stops_route_usage[stop_id]) >= W_CUTOFF
+        stop_node for stop_id, stop_node in stop_nodes_dict.items()
+        if rhos[stop_nodes_dict[stop_id]] >= RHO_CUTOFF and len(stop_nodes_route_usage[stop_nodes_dict[stop_id]]) >= W_CUTOFF
     }
     T = {
-        stop_nodes_dict[stop_id] for stop_id in stops_route_usage.keys()
-        if rhos[stop_nodes_dict[stop_id]] >= RHO_CUTOFF and len(stops_route_usage[stop_id]) >= T_CUTOFF
+        stop_node for stop_id, stop_node in stop_nodes_dict.items()
+        if rhos[stop_nodes_dict[stop_id]] >= RHO_CUTOFF and len(stop_nodes_route_usage[stop_nodes_dict[stop_id]]) >= T_CUTOFF
     }.intersection(W)
     F = {
         stop_nodes_dict[stop_id] for stop_id in rail_stop_times_df['stop_id'].unique()
     }.intersection(W)
+    T = T.union(F)
 
     return W, T, F
 
@@ -267,6 +274,10 @@ def get_C(G, stop_nodes_dict, W):
     C = {}
     ell = 0
     for route_id in routes_df['route_id']:
+
+        if route_id in FORBIDDEN_L:
+            continue
+
         if (
                 headways[route_id][0] and
                 headways[route_id][1] and
