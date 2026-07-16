@@ -86,7 +86,7 @@ if __name__ == '__main__':
         for ridership_factor in ridership_factors:
             kwargs = {
                 'instance_load': True,
-                'model_load': False,
+                'model_load': True,
                 'budget_factor': budget_factor,
                 'ridership_factor': ridership_factor,
             }
