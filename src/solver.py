@@ -75,14 +75,14 @@ def service_plans(rhos, st_pairs, C, L, L_st, **kwargs):
             # vals = [np.sqrt(t) for t in pts]
             # m.addGenConstrPWL(m._f[(s, t)], var, pts, vals)
 
-            # m.addConstr(var <= 9.486832980505*m._f[(s, t)] + 0.000000000000)
-            # m.addConstr(var <= 3.162277660168*m._f[(s, t)] + 0.070272836893)
-            # m.addConstr(var <= 1.897366596101*m._f[(s, t)] + 0.126491106407)
+            m.addConstr(var <= 9.486832980505*m._f[(s, t)] + 0.000000000000)
+            m.addConstr(var <= 3.162277660168*m._f[(s, t)] + 0.070272836893)
+            m.addConstr(var <= 1.897366596101*m._f[(s, t)] + 0.126491106407)
 
-            m.addConstr(var <= 12.649110640673516 * m._f[(s, t)] + 0.000000000000000)
-            m.addConstr(var <= 4.216370213557838 * m._f[(s, t)] + 0.052704627669473)
-            m.addConstr(var <= 2.529822128134703 * m._f[(s, t)] + 0.094868329805051)
-            m.addConstr(var <= 1.807015805810503 * m._f[(s, t)] + 0.135526185435788)
+            # m.addConstr(var <= 12.649110640673516 * m._f[(s, t)] + 0.000000000000000)
+            # m.addConstr(var <= 4.216370213557838 * m._f[(s, t)] + 0.052704627669473)
+            # m.addConstr(var <= 2.529822128134703 * m._f[(s, t)] + 0.094868329805051)
+            # m.addConstr(var <= 1.807015805810503 * m._f[(s, t)] + 0.135526185435788)
 
         t1 = time.time()
         print('             ... done writing level of service constraints!')
