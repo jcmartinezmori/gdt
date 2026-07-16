@@ -125,6 +125,7 @@ def service_plans(rhos, st_pairs, C, L, L_st, **kwargs):
 
     m.Params.MIPFocus = kwargs.get('mip_focus', MIP_FOCUS)
     m.Params.TimeLimit = kwargs.get('time_limit', TIME_LIMIT)
+    m.Params.Threads = kwargs.get('threads', THREADS)
 
     print('         Started writing budget constraints ...')
     budget_C = sum(C[ell]['time'] / C[ell]['h'] for ell in C.keys()) * budget_factor

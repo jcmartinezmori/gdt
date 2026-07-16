@@ -78,15 +78,15 @@ def main(**kwargs):
 
 if __name__ == '__main__':
 
-    # budget_factors = [1.0, 0.9, 0.8]
-    # ridership_factors = [0.7, 0.65, 0.6, 0.55, 0.5]
-    budget_factors = [1.0]
-    ridership_factors = [0.7]
+    budget_factors = [1.0, 0.9, 0.8]
+    ridership_factors = [0.7, 0.65, 0.6, 0.55, 0.5]
+    # budget_factors = git st[1.0]
+    # ridership_factors = [0.7]
     for budget_factor in budget_factors:
         for ridership_factor in ridership_factors:
             kwargs = {
                 'instance_load': True,
-                'model_load': False,
+                'model_load': True,
                 'budget_factor': budget_factor,
                 'ridership_factor': ridership_factor,
             }
