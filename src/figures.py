@@ -66,14 +66,17 @@ def current_map():
     folium_map.save('./results/maps/html/current_service_plan_{0}.html'.format(PLACE))
 
 
-def solution_maps(solver_params):
+def solution_maps(**kwargs):
 
-    solution_filename = PLACE + '_' + solver_params
+    place = kwargs.get('place', PLACE)
+    budget_factor = kwargs.get('budget_factor', BUDGET_FACTOR)
+    ridership_factor = kwargs.get('ridership_factor', RIDERSHIP_FACTOR)
+    solution_filename = place + '_' + 'BUDGET_FACTOR-{0}_RIDERSHIP_FACTOR-{1}'.format(budget_factor, ridership_factor)
 
-    G = src.instance.__load_G(PLACE)
-    rhos = src.instance.__load_rhos(PLACE)
-    W, T, F = src.instance.__load_W_T_F(PLACE)
-    L, _ = src.instance.__load_L_L_st(PLACE)
+    G = src.instance.__load_G(place)
+    rhos = src.instance.__load_rhos(place)
+    W, T, F = src.instance.__load_W_T_F(place)
+    L, _ = src.instance.__load_L_L_st(place)
 
     with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
         P_u = pickle.load(file)
@@ -261,17 +264,14 @@ def diff_neutral_solution_maps(solver_params):
     folium_map.save('./results/maps/html/diff_neutral_coverage_service_plan_{0}.html'.format(solution_filename))
 
 
-def level_of_service(solver_params_list):
+def level_of_service(solver_params_list, **kwargs):
 
-    rhos = src.instance.__load_rhos(PLACE)
-    st_pairs = src.instance.__load_st_pairs(PLACE)
-    C = src.instance.__load_C(PLACE)
-    L, L_st = src.instance.__load_L_L_st(PLACE)
+    place = kwargs.get('place', PLACE)
 
-    symbol_map = {
-        1: 'triangle-up',
-        0.8: 'circle'
-    }
+    rhos = src.instance.__load_rhos(place)
+    st_pairs = src.instance.__load_st_pairs(place)
+    C = src.instance.__load_C(place)
+    L, L_st = src.instance.__load_L_L_st(place)
 
     data = []
     for solver_params in solver_params_list:
@@ -279,54 +279,57 @@ def level_of_service(solver_params_list):
         budget_factor, ridership_factor = solver_params
 
         solver_params = 'BUDGET_FACTOR-{0}_RIDERSHIP_FACTOR-{1}'.format(budget_factor, ridership_factor)
-        solution_filename = PLACE + '_' + solver_params
+        solution_filename = place + '_' + solver_params
 
         with open('./results/solutions/P_u_{0}.pkl'.format(solution_filename), 'rb') as file:
             P_u = pickle.load(file)
 
         P_u_dict = {ell: h for ell, h in P_u}
         freq_P_u = {(s, t): 0 for s, t in st_pairs}
-        for s, t in st_pairs:
-            for ell in L_st[(s, t)]:
-                try:
-                    freq_P_u[(s, t)] += 1 / P_u_dict[ell]
-                except KeyError:
-                    pass
+        for ell, h in P_u_dict.items():
+            for s, t in L[ell]['st_pairs']:
+                freq_P_u[(s, t)] += 1 / h
 
-        ridership = sum(np.sqrt(rhos[s] * rhos[t]) * np.sqrt(freq) for (s, t), freq in freq_P_u.items())
+        ridership = sum(np.sqrt(rhos[s] * rhos[t]) * np.sqrt(60 * freq) for (s, t), freq in freq_P_u.items())
         coverage = sum(1 for freq in freq_P_u.values() if freq >= 1/COVERAGE_H)
-        legend = 'Goal: Ridership, Budget Factor: {0}, Ridership Factor: {1}'.format(budget_factor, ridership_factor)
-        data.append((ridership, coverage, ridership_factor, symbol_map[budget_factor], HEXVERMILLION, legend))
+        html_filename = './results/maps/html/ridership_service_plan_{0}.html'.format(solution_filename)
+        data.append(('Ridership', ridership, coverage, ridership_factor, budget_factor, HEXVERMILLION, html_filename))
 
         with open('./results/solutions/P_y_{0}.pkl'.format(solution_filename), 'rb') as file:
             P_y = pickle.load(file)
         P_y_dict = {ell: h for ell, h in P_y}
-
         freq_P_y = {(s, t): 0 for s, t in st_pairs}
-        for s, t in st_pairs:
-            for ell in L_st[(s, t)]:
-                try:
-                    freq_P_y[(s, t)] += 1 / P_y_dict[ell]
-                except KeyError:
-                    pass
+        for ell, h in P_y_dict.items():
+            for s, t in L[ell]['st_pairs']:
+                freq_P_y[(s, t)] += 1 / h
 
-        ridership = sum(np.sqrt(rhos[s] * rhos[t]) * np.sqrt(freq) for (s, t), freq in freq_P_y.items())
+        ridership = sum(np.sqrt(rhos[s] * rhos[t]) * np.sqrt(60 * freq) for (s, t), freq in freq_P_y.items())
         coverage = sum(1 for freq in freq_P_y.values() if freq >= 1/COVERAGE_H)
-        data.append((ridership, coverage, ridership_factor, symbol_map[budget_factor], HEXBLUE))
+        html_filename = './results/maps/html/coverage_service_plan_{0}.html'.format(solution_filename)
+        data.append(('Coverage', ridership, coverage, ridership_factor, budget_factor, HEXBLUE, html_filename))
 
     C_dict = {ell: C[ell]['h'] for ell in C.keys()}
     freq_C = {(s, t): 0 for s, t in st_pairs}
-    for s, t in st_pairs:
-        for ell in L_st[(s, t)]:
-            try:
-                freq_C[(s, t)] += 1 / C_dict[ell]
-            except KeyError:
-                pass
-    ridership = sum(np.sqrt(rhos[s] * rhos[t]) * np.sqrt(freq) for (s, t), freq in freq_C.items())
-    coverage = sum(1 for freq in freq_C.values() if freq >= 1/COVERAGE_H)
+    for ell, h in C_dict.items():
+        for s, t in L[ell]['st_pairs']:
+            freq_C[(s, t)] += 1 / h
 
-    df = pd.DataFrame(data, columns=['ridership', 'coverage', 'ridership_factor', 'symbol', 'hexcolor'])
+    ridership = sum(np.sqrt(rhos[s] * rhos[t]) * np.sqrt(60 * freq) for (s, t), freq in freq_C.items())
+    coverage = sum(1 for freq in freq_C.values() if freq >= 1/COVERAGE_H)
+    html_filename = './results/maps/html/current_service_plan_{0}.html'.format(place)
+
+    df = pd.DataFrame(
+        data, columns=['goal', 'ridership', 'coverage', 'ridership_factor', 'budget_factor', 'hexcolor', 'html_filename']
+    )
+
+    symbol_map = {
+        1.0: 'circle',
+        0.9: 'triangle-down',
+        0.8: 'x'
+    }
+
     df['color'] = df.apply(lambda row: hex_to_rgba(row['hexcolor'], row['ridership_factor']), axis=1)
+    df['symbol'] = df['budget_factor'].map(symbol_map)
 
     fig = go.Figure()
     fig.add_trace(
@@ -340,7 +343,14 @@ def level_of_service(solver_params_list):
                 size=20,
                 line=dict(color="black", width=2),
             ),
-        showlegend=False,
+            customdata=[['Current Service Plan', ridership, coverage, None, None, html_filename]],
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>"
+                'Ridership: %{customdata[1]:.2f}<br>'
+                'Coverage: %{customdata[2]}<br>'
+                '<extra></extra>'
+            ),
+            showlegend=False
         )
     )
     fig.add_trace(
@@ -353,16 +363,50 @@ def level_of_service(solver_params_list):
                 color=df['color'],
                 size=25,
             ),
-        showlegend=False
+            customdata=df[['goal', 'ridership', 'coverage', 'ridership_factor', 'budget_factor', 'html_filename']],
+            hovertemplate=(
+                "<b>Goal: %{customdata[0]}</b><br>"
+                'Ridership: %{customdata[1]:.2f}<br>'
+                'Coverage: %{customdata[2]}<br>'
+                'Ridership Factor: %{customdata[3]}<br>'
+                'Budget Factor: %{customdata[4]}<br>'
+                '<extra></extra>'
+            ),
+            showlegend=False
         )
     )
 
     fig.update_layout(
-        xaxis=dict(title='Coverage'),
-        yaxis=dict(title='Ridership'),
+        xaxis=dict(
+            title=r'$\Large \textrm{Coverage } [\mathtt{OD \ pairs}]$',
+            title_font=dict(size=24),
+            tickfont=dict(size=16)
+        ),
+        yaxis=dict(
+            title=r'$\Large \textrm{Ridership } [\mathtt{amenities} \times \sqrt{\mathtt{runs/hr}}]$',
+            title_font=dict(size=24),
+            tickfont=dict(size=16)
+        )
     )
 
-    fig.show()
+    html = fig.to_html(
+        include_plotlyjs='cdn',
+        full_html=True,
+        div_id='scatter',
+        include_mathjax='cdn'
+    )
+
+    html += """
+    <script>
+    document.getElementById("scatter").on("plotly_click", function(data) {
+        var filename = data.points[0].customdata[5];
+        window.open("./../../" + filename, "_blank");
+    });
+    </script>
+    """
+
+    with open('./results/figures/level_of_service_{0}.html'.format(place), 'w', encoding="utf-8") as file:
+        file.write(html)
 
 
 
@@ -476,24 +520,31 @@ async def convert_html_to_images(html_dir, pdf_dir):
 
 if __name__ == '__main__':
 
-    # solver_params = 'BUDGET_FACTOR-{0}_RIDERSHIP_FACTOR-{1}'.format(BUDGET_FACTOR, RIDERSHIP_FACTOR)
-    solver_params = 'BUDGET_FACTOR-{0}_RIDERSHIP_FACTOR-{1}'.format(0.8, 0.6)
     # current_map()
-    # solution_maps(solver_params)
+
+    # budget_factors = [1.0, 0.9, 0.8]
+    # ridership_factors = [0.7, 0.65, 0.6, 0.55, 0.5]
+    budget_factors = [1.0]
+    ridership_factors = [0.7]
+    for budget_factor in budget_factors:
+        for ridership_factor in ridership_factors:
+            kwargs = {
+                'budget_factor': budget_factor,
+                'ridership_factor': ridership_factor,
+            }
+            solution_maps(**kwargs)
+
     # diff_gain_solution_maps(solver_params)
     # diff_loss_solution_maps(solver_params)
     # diff_neutral_solution_maps(solver_params)
 
-    solver_params_list = [
-        (0.8, 0.5),
-        (0.8, 0.6),
-        (0.8, 0.7),
-        (1, 0.5),
-        (1, 0.6),
-        (1, 0.7),
-    ]
-    level_of_service(solver_params_list)
+    # budget_factors = [1.0, 0.9, 0.8]
+    # ridership_factors = [0.7, 0.65, 0.6, 0.55, 0.5]
+    # solver_params_list = [
+    #     (budget_factor, ridership_factor) for budget_factor in budget_factors for ridership_factor in ridership_factors
+    # ]
+    # level_of_service(solver_params_list)
 
-    html_dir = './results/maps/html'
-    pdf_dir = './results/maps/pdf'
-    asyncio.run(convert_html_to_images(html_dir, pdf_dir))
+    # html_dir = './results/maps/html'
+    # pdf_dir = './results/maps/pdf'
+    # asyncio.run(convert_html_to_images(html_dir, pdf_dir))
